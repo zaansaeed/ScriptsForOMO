@@ -3,9 +3,12 @@ import math
 from numpy import *
 import os
 import glob
-input = '/Users/zaan/Downloads/drive-download-20241001T041053Z-001' #input to where files .xyz files are stored.
-atoms = [22, 56] # select atom IDs to calculate distances
-csv_of_qikprop= './PeptideDescriptors.xlsx - PeptideR1C1_descriptors-2.csv' #csv of qikprop, only names then propeties
+input = '/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library/R6C7_XYZ' #input to where files .xyz files are stored.
+atoms = [72, 44git] # select atom IDs to calculate distances
+#22or28? c 56N for R1C1
+#75N 59C R8C1
+#72N  44C? R6C7
+csv_of_qikprop= '/Users/zaansaeed/Downloads/OMO Lab - Peptide Cyclization - Peptide Descriptors.xlsx - PeptideR6C7_descriptors.csv' #csv of qikprop, only names then propeties
 
 #csv file should be the same length as .xyz's in "input"
 
@@ -107,9 +110,9 @@ def boltzmann(values, name = None,):
 
 
 
-
-for column_name, column_data in df.items():
-    print(f'Boltzmann Average of : {column_name} is ' + str(boltzmann(column_data,column_name)))
+if csv_of_qikprop != '':
+	for column_name, column_data in df.items():
+		print(f'Boltzmann Average of : {column_name} is ' + str(boltzmann(column_data,column_name)))
 print(f'Boltzmann Average of N-C termini distance is : ' + str(boltzmann(calculatedistances())))
 
 
