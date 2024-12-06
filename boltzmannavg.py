@@ -4,7 +4,7 @@ from numpy import *
 import os
 import glob
 input = '/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library/R6C7_XYZ' #input to where files .xyz files are stored.
-atoms = [72, 44git] # select atom IDs to calculate distances
+atoms = [72, 44] # select atom IDs to calculate distances
 #22or28? c 56N for R1C1
 #75N 59C R8C1
 #72N  44C? R6C7
