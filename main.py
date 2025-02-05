@@ -3,8 +3,9 @@ from rdkit import Chem
 import py3Dmol
 import math
 import numpy as np
+import os
+import pandas as pd
 
-XYZ_FILES = ''
 
 def xyz_to_array(xyz_file):
     #oth index is num atoms
@@ -27,13 +28,20 @@ def xyz_to_array(xyz_file):
 
 class Peptide:
 
-    def __init__(self, smiles_code):
+    def __init__(self, smiles_code, PercentCyclization, name):
         self.molecule = Chem.AddHs(Chem.MolFromSmiles(smiles_code))
         AllChem.EmbedMolecule(self.molecule)
         self.atom_IDs = [atom.GetIdx() for atom in self.molecule.GetAtoms()]
         self.conformers = []
         self.amideGroups = []
-        self.PercentCyclization = 0.0
+        self.PercentCyclization = PercentCyclization
+        self.Name = name
+
+    def getName(self):
+        return self.Name
+
+    def getPercentCyclization(self):
+        return self.PercentCyclization
 
     def csearch(self):
         pass # = Conformer(self, xyz)
@@ -113,11 +121,12 @@ class AmideGroup:
 
 peptides = []
 
+df = pd.read_csv("PeptideCyclizationSmiles.csv")
+df = df[['Address','Smiles','Percent cyclization']].dropna()
+peptide_data = df.set_index('Address').to_dict()
+print(peptide_data)
+valid_codes = set(df['Address'].str[:4])
 
-
-for
-
-
-
-
-
+for folder_name in os.listdir("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library"):
+    if folder_name[:4] in valid_codes:
+        peptide = Peptide()
