@@ -5,6 +5,8 @@ import math
 import numpy as np
 import os
 import pandas as pd
+import glob
+import re
 
 
 def xyz_to_array(xyz_file):
@@ -23,6 +25,8 @@ def xyz_to_array(xyz_file):
         coordinates.append([x, y, z])
     return coordinates
 
+def sort_files(s):
+    return [int(text) if text.isdigit() else text for text in re.split(r'(\d+)', os.path.basename(s))]
 
 
 
@@ -30,7 +34,7 @@ class Peptide:
 
     peptide_registry ={} # each peptide will store itself in the library
 
-    def __init__(self, smiles_code, PercentCyclization, name):
+    def __init__(self, smiles_code, PercentCyclization, name, csv_of_properties):
         self.molecule = Chem.AddHs(Chem.MolFromSmiles(smiles_code))
         AllChem.EmbedMolecule(self.molecule)
         self.atom_IDs = [atom.GetIdx() for atom in self.molecule.GetAtoms()]
@@ -38,10 +42,8 @@ class Peptide:
         self.amideGroups = []
         self.PercentCyclization = PercentCyclization
         self.Name = name
+        self.properties = pd.read_csv(csv_of_properties).to_dict(orient="records")
         Peptide.peptide_registry[name] = self #the key is the name, the oobject is the peptide itself
-
-
-
 
     def getName(self):
         return self.Name
@@ -65,13 +67,14 @@ class Peptide:
             return "There are no amide groups in this peptide."
         else:
             for i, IDs in enumerate(matches):
-                self.amideGroups.append(AmideGroup(IDs,i))
+                self.amideGroups.append(AmideGroup(IDs,i,self))
             return "Added " + str(len(matches)) + " Amide groups to GroupIDs."
 
 
 class Conformer(Peptide):
     def __init__(self, parent_peptide: Peptide, xyz_file):
         self.atom_coordinates = xyz_to_array(xyz_file)
+        #self.relative_energy = relative_energy
 
     def getAmideDistances(self):
         atom_coordinates = xyz_to_array("R1C1_conformation_001.xyz")
@@ -126,25 +129,34 @@ class AmideGroup:
         return self.group_num
 
 peptides = []
-df = pd.read_csv("PeptideCyclizationSmiles.csv")
-df = df[['Address','Smiles','Percent cyclization']].dropna()
-peptide_data = df.set_index('Address').to_dict(orient="index")
+df = pd.read_csv("PeptideCyclizationSmiles.csv") #readas all peptide data
+df = df[['Address','Smiles','Percent cyclization']].dropna() # drops other columns
+peptide_data = df.set_index('Address').to_dict(orient="index") #makes data a dictionary accessible by the name of the peptide
 
 for folder_name in os.listdir("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library"):
-    if folder_name[:4] in peptide_data.keys():
-        smiles = peptide_data[folder_name[:4]]['Smiles']
-        percent = peptide_data[folder_name[:4]]['Percent cyclization']
-        peptide = Peptide(smiles, percent, folder_name[:4])
+    files = sorted(glob.glob(f"{"/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library/" + folder_name}/**/*",recursive=True),key=sort_files)
+    peptide_name = folder_name[:4]
+    peptide_csv = ""
+    for file in files:
+        if file.endswith(".csv"):
+            peptide_csv = file
+
+    if peptide_name in peptide_data.keys():
+        smiles = peptide_data[peptide_name]['Smiles']
+        percent = peptide_data[peptide_name]['Percent cyclization']
+        peptide = Peptide(smiles, percent, peptide_name,peptide_csv)
+        for file in files:
+            if file.endswith(".xyz"):
+                peptide.addConformer(Conformer(peptide, os.path.abspath(file)))
+
         peptides.append(peptide)
 
-for folder_name in os.listdir("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library"):
-    tempPep = Peptide.peptide_registry.get(folder_name[:4])
-    for root,_, files in os.walk("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library/"+folder_name):
-        for xyz_file in files:
-            print(xyz_file)
-            if xyz_file.startswith('r') or xyz_file.startswith('R'):
-                tempPep.addConformer(Conformer(tempPep,os.path.join(root,xyz_file)))
 
-print(len(Peptide.peptide_registry.get("R1C1").getConformers()))
+amide_distances= []
+for peptide in peptides:
+    peptide.addAmides()
+    for conformer in peptide.getConformers():
+        conformer.getAmideDistances()
+
 
 
