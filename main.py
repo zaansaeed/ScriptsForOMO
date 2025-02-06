@@ -1,4 +1,4 @@
-from rdkit.Chem import AllChem, Draw, Descriptors3D, Descriptors
+from rdkit.Chem import AllChem
 from rdkit import Chem
 import py3Dmol
 import math
@@ -10,7 +10,7 @@ import pandas as pd
 def xyz_to_array(xyz_file):
     #oth index is num atoms
     #ith index is ith atom ID
-    with open(xyz_file, 'r') as file:
+    with open(xyz_file, 'r', encoding= 'utf-8') as file:
         lines = file.readlines()
 
     num_atoms = int(lines[0].strip())
@@ -28,6 +28,8 @@ def xyz_to_array(xyz_file):
 
 class Peptide:
 
+    peptide_registry ={} # each peptide will store itself in the library
+
     def __init__(self, smiles_code, PercentCyclization, name):
         self.molecule = Chem.AddHs(Chem.MolFromSmiles(smiles_code))
         AllChem.EmbedMolecule(self.molecule)
@@ -36,6 +38,10 @@ class Peptide:
         self.amideGroups = []
         self.PercentCyclization = PercentCyclization
         self.Name = name
+        Peptide.peptide_registry[name] = self #the key is the name, the oobject is the peptide itself
+
+
+
 
     def getName(self):
         return self.Name
@@ -88,14 +94,14 @@ class Conformer(Peptide):
 
 class AmideGroup:
 
-    def __init__(self, atom_IDs, group_num):
+    def __init__(self, atom_IDs, group_num, Peptide):
         self.group_num = group_num
         self.atom_IDs = atom_IDs
         self.C = self.atom_IDs[0]
         self.O = self.atom_IDs[1]
         self.N = self.atom_IDs[2]
 
-        nitrogen = mol.GetAtomWithIdx(self.N)
+        nitrogen = Peptide.molecule.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()
         hydrogen_id = None
 
@@ -120,13 +126,25 @@ class AmideGroup:
         return self.group_num
 
 peptides = []
-
 df = pd.read_csv("PeptideCyclizationSmiles.csv")
 df = df[['Address','Smiles','Percent cyclization']].dropna()
-peptide_data = df.set_index('Address').to_dict()
-print(peptide_data)
-valid_codes = set(df['Address'].str[:4])
+peptide_data = df.set_index('Address').to_dict(orient="index")
 
 for folder_name in os.listdir("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library"):
-    if folder_name[:4] in valid_codes:
-        peptide = Peptide()
+    if folder_name[:4] in peptide_data.keys():
+        smiles = peptide_data[folder_name[:4]]['Smiles']
+        percent = peptide_data[folder_name[:4]]['Percent cyclization']
+        peptide = Peptide(smiles, percent, folder_name[:4])
+        peptides.append(peptide)
+
+for folder_name in os.listdir("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library"):
+    tempPep = Peptide.peptide_registry.get(folder_name[:4])
+    for root,_, files in os.walk("/Users/zaansaeed/Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/Peptide Library/"+folder_name):
+        for xyz_file in files:
+            print(xyz_file)
+            if xyz_file.startswith('r') or xyz_file.startswith('R'):
+                tempPep.addConformer(Conformer(tempPep,os.path.join(root,xyz_file)))
+
+print(len(Peptide.peptide_registry.get("R1C1").getConformers()))
+
+
