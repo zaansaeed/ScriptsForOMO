@@ -1,0 +1,49 @@
+Metadata-Version: 2.1
+Name: propka
+Version: 3.5.1
+Summary: Heuristic pKa calculations with ligands
+Home-page: http://propka.org
+Author: Jan H. Jensen
+Author-email: jhjensen@chem.ku.dk
+Maintainer: Nathan Baker
+Maintainer-email: nathanandrewbaker@gmail.com
+License: LGPL v2.1
+Keywords: science
+Classifier: Development Status :: 6 - Mature
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Requires-Python: >=3.8
+License-File: LICENSE
+
+
+PROPKA predicts the pKa values of ionizable groups in proteins (version 3.0) and
+protein-ligand complexes (version 3.1 and later) based on the 3D structure.
+
+For proteins without ligands both version should produce the same result.
+
+The method is described in the following papers, which you should cite
+in publications:
+
+* Sondergaard, Chresten R., Mats HM Olsson, Michal Rostkowski, and Jan
+  H. Jensen. "Improved Treatment of Ligands and Coupling Effects in
+  Empirical Calculation and Rationalization of pKa Values." Journal of
+  Chemical Theory and Computation 7, no. 7 (2011): 2284-2295.
+
+* Olsson, Mats HM, Chresten R. Sondergaard, Michal Rostkowski, and Jan
+  H. Jensen. "PROPKA3: consistent treatment of internal and surface
+  residues in empirical pKa predictions." Journal of Chemical Theory
+  and Computation 7, no. 2 (2011): 525-537.
+
+See http://propka.org/ for the PROPKA web server.

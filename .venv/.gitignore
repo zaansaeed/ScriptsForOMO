@@ -1,0 +1,6 @@
+# created by virtualenv automatically
+bin
+.idea
+.ipynb_checkpoints
+__pycache__
+PeptideCyclizationSmiles.csv
