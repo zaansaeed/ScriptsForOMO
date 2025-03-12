@@ -7,7 +7,7 @@ working_dir = os.path.abspath("/Users/zaansaeed/maestro_files") #set working dir
 os.chdir(working_dir)
 # Input SMILES file
 print(working_dir)
-input_file = "input.smi"
+input_file = "molecule_1.smi"
 
 # Read the input SMILES file
 with open(input_file, "r") as f:
@@ -35,7 +35,8 @@ for i, line in enumerate(lines):
 
     try:
         print(f"Processing {name}...")
-        subprocess.run(ligprep_command,check=True,shell=True)
+        #subprocess.run(ligprep_command,check=True,shell=True)
+        os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae output.mae")
         print(f"Generated: {output_mae}")
     except subprocess.CalledProcessError as e:
         print(f"Error processing {name}: {e}")
