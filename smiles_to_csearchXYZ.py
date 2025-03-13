@@ -1,6 +1,17 @@
 import os
 import subprocess
 import time
+import psutil
+
+
+def is_process_running(pid):
+    try:
+        parent = psutil.Process(pid)
+        children = parent.children(recursive=True)  # Get all child processes
+        return parent.is_running() and any(child.is_running() for child in children)
+    except psutil.NoSuchProcess:
+        return False
+
 
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
@@ -37,18 +48,15 @@ for i, line in enumerate(smiles_lines):
 
     if not os.path.exists(name+".mae"):
         #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
-        subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"],check=True)
+        process = subprocess.Popen(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
 
-    prev_size=-1
-    while True:
-        if os.path.exists(f"{name}.mae"):
-            new_size = os.path.getsize(f"{name}.mae")
-            if new_size == prev_size:
-                print("smile converted to .mae")
-                break
-            prev_size = new_size
-        time.sleep(.1)
-        print(f"Waiting for smile to convert to .mae for {name}...")
+        pid = process.pid
+        while is_process_running(pid):
+            time.sleep(1)
+
+
+
+
 
 
 
