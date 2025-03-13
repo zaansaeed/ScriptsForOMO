@@ -77,7 +77,7 @@ for i, line in enumerate(smiles_lines):
             lines = f.readlines()
         with open(input_file, "r") as f:
             num_coords = int(lines[0].split()[0])
-            num_cords = num_coords+2
+            num_cords = num_coords+2 #num of cords + 2 becuase of the length and name of peptide
             conformations = []
             while True:
                 lines = [f.readline() for i in range(num_cords)]
