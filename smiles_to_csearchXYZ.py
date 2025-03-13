@@ -4,15 +4,6 @@ import time
 import psutil
 
 
-def is_process_running(pid):
-    try:
-        parent = psutil.Process(pid)
-        children = parent.children(recursive=True)  # Get all child processes
-        return parent.is_running() and any(child.is_running() for child in children)
-    except psutil.NoSuchProcess:
-        return False
-
-
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
@@ -48,11 +39,11 @@ for i, line in enumerate(smiles_lines):
 
     if not os.path.exists(name+".mae"):
         #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
-        process = subprocess.Popen(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
-
-        pid = process.pid
-        while is_process_running(pid):
+        subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
+        while not os.path.exists(f"{name}.mae"):
+            print("waiting for smile to .mae")
             time.sleep(1)
+
 
 
 
@@ -84,19 +75,18 @@ for i, line in enumerate(smiles_lines):
 
     if not os.path.exists(f"{name}-out.mae"):
         #os.system(f"/opt/schrodinger/suites2024-3/macromodel {name}") #if there is no input, then run confsearch
-        subprocess.run(["/opt/schrodinger/suites2024-3/macromodel", f"{name}"],check=True)
-
-    prev_size=-1
-    while True:
+        subprocess.run(["/opt/schrodinger/suites2024-3/macromodel", f"{name}"])
+    prev_size = -1
+    while not os.path.exists(f"{name}-out.mae") or os.path.getsize(f"{name}-out.mae") != prev_size:
         if os.path.exists(f"{name}-out.mae"):
             new_size = os.path.getsize(f"{name}-out.mae")
-            print(new_size)
             if new_size == prev_size:
-                print("conf search done")
+                print("Conf search completed")
                 break
             prev_size = new_size
-        time.sleep(2)
-        print(f"generating conformers for {name}...")
+        time.sleep(60)
+        print(f"Waiting for conf search for {name}...")
+
 
 
 
@@ -104,22 +94,32 @@ for i, line in enumerate(smiles_lines):
     if not os.path.exists(f"{name}-out.pdb"):
         #os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
         subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
-    prev_size=-1
-    while True:
+
+    while not os.path.exists(f"{name}-out.pdb") or os.path.getsize(f"{name}-out.pdb") != prev_size:
         if os.path.exists(f"{name}-out.pdb"):
             new_size = os.path.getsize(f"{name}-out.pdb")
             if new_size == prev_size:
                 print("converted to pdb")
                 break
             prev_size = new_size
-        time.sleep(2)
-        print(f"converting to pdb {name}...")
+        time.sleep(30)
+        print(f"waiting to convert output to pdb {name}...")
 
 
 
     #convert to xyz
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
+
+    while not os.path.exists(f"{name}-out.xyz") or os.path.getsize(f"{name}-out.xyz") != prev_size:
+        if os.path.exists(f"{name}-out.xyz"):
+            new_size = os.path.getsize(f"{name}-out.xyz")
+            if new_size == prev_size:
+                print("converted to xyz")
+                break
+            prev_size = new_size
+        time.sleep(10)
+        print(f"waiting to convert pdb to xyz {name}...")
 
     def split_xyz(input_file):
         with open(input_file, "r") as f:
