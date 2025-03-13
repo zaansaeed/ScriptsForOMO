@@ -36,8 +36,21 @@ for i, line in enumerate(smiles_lines):
             temp_file.write(f"{smile_string}\n")
 
     if not os.path.exists(name+".mae"):
-        os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
-        time.sleep(30)
+        #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
+        subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"],check=True)
+
+    prev_size=-1
+    while True:
+        if os.path.exists(f"{name}.mae"):
+            new_size = os.path.getsize(f"{name}.mae")
+            if new_size == prev_size:
+                print("smile converted to .mae")
+                break
+            prev_size = new_size
+        time.sleep(.1)
+        print(f"Waiting for smile to convert to .mae for {name}...")
+
+
 
     #we now have a .mae file of the smile string we will run conf search on. we need to make confsearch file
     if not os.path.exists(name):
@@ -61,13 +74,41 @@ for i, line in enumerate(smiles_lines):
             f.write("ENERGY_WINDOW 104.6\n")
             f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
 
-    if not os.path.exists(f"{name}-out.mae"): #if there is no input, then run confsearch
-        os.system(f"/opt/schrodinger/suites2024-3/macromodel {name}")
-        time.sleep(60)
+    if not os.path.exists(f"{name}-out.mae"):
+        #os.system(f"/opt/schrodinger/suites2024-3/macromodel {name}") #if there is no input, then run confsearch
+        subprocess.run(["/opt/schrodinger/suites2024-3/macromodel", f"{name}"],check=True)
+
+    prev_size=-1
+    while True:
+        if os.path.exists(f"{name}-out.mae"):
+            new_size = os.path.getsize(f"{name}-out.mae")
+            print(new_size)
+            if new_size == prev_size:
+                print("conf search done")
+                break
+            prev_size = new_size
+        time.sleep(2)
+        print(f"generating conformers for {name}...")
+
+
 
     #convert to pdb
     if not os.path.exists(f"{name}-out.pdb"):
-        os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
+        #os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
+        subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
+    prev_size=-1
+    while True:
+        if os.path.exists(f"{name}-out.pdb"):
+            new_size = os.path.getsize(f"{name}-out.pdb")
+            if new_size == prev_size:
+                print("converted to pdb")
+                break
+            prev_size = new_size
+        time.sleep(2)
+        print(f"converting to pdb {name}...")
+
+
+
     #convert to xyz
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
@@ -97,6 +138,17 @@ for i, line in enumerate(smiles_lines):
         os.chdir(temp_working_dir)
         split_xyz(working_dir+f"/{name}-out.xyz")
     os.chdir(main_dir)
+
+
+    """ while not os.path.exists(f"{name}-out.mae") or os.path.getsize(f"{name}-out.mae")!=prev_size:
+        if os.path.exists(f"{name}-out.mae"):
+            new_size = os.path.getsize(f"{name}-out.mae")
+            if new_size == prev_size:
+                print("Conf search completed")
+                break
+            prev_size = new_size
+        time.sleep(1)
+        print(f"Waiting for conf search for {name}...")"""
 
 
 
