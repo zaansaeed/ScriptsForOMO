@@ -145,7 +145,27 @@ for i, line in enumerate(smiles_lines):
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
         split_xyz(working_dir+f"/{name}-out.xyz")
+
+    os.chdir(working_dir)
+
+    if not os.path.exists(f"{name}-energies.csv"):
+        with open(f"{name}.log", "r") as f:
+            conformations_list = []
+            lines = f.readlines()
+            for line in lines:
+                if "Conformation " in line:
+                    conformations_list.append(line)
+
+
+
+
+
     os.chdir(main_dir)
+
+
+
+    os.chdir(main_dir)
+
 
 
     """ while not os.path.exists(f"{name}-out.mae") or os.path.getsize(f"{name}-out.mae")!=prev_size:
