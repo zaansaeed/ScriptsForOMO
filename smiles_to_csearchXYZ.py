@@ -201,20 +201,25 @@ class AmideGroup:
 
     def __init__(self, atom_IDs, group_num, Peptide):
         self.group_num = group_num
-        self.atom_IDs = atom_IDs
-        self.C = self.atom_IDs[0]
-        self.O = self.atom_IDs[1]
-        self.N = self.atom_IDs[2]
+
+        self.N= atom_IDs[0]
 
         nitrogen = Peptide.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()
         hydrogen_id = None
 
         for neighbor in neighbors:
+
             if neighbor.GetSymbol() == 'H':
                 hydrogen_id = neighbor.GetIdx()
-                break
+            if neighbor.GetSymbol() == 'C':
+                for neighbor2 in neighbor.GetNeighbors():
+                    if neighbor2.GetSymbol() == 'O':
+                        self.C=neighbor.GetIdx()
+                        self.O=neighbor2.GetIdx()
         self.H = hydrogen_id
+        self.atom_IDs = (self.C,self.O,self.N)
+
 
     def getIDs(self):
         return self.atom_IDs
@@ -231,18 +236,36 @@ class AmideGroup:
 
 def addAmides(input_peptide):
     amideGroups = []
-    n_terminus = Chem.MolFromSmarts('[N;H2]')
-    matches = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[N][C;X4][C;X3](=[O])-[N]'))
-    matches = [tpl[2:] for tpl in matches]
-    n_terminus_match = input_peptide.GetSubstructMatch(n_terminus)
-    n_terminus_id = n_terminus_match[0]
-    bfs_order = bfs_traversal(input_peptide, n_terminus_id)
+    matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
+    matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
+    matches = matches1 +matches2
+    print(Chem.MolToSmarts(input_peptide).replace("#6",'C').replace('#8','O').replace('#7','N'))
+    print(matches)
+    nitrogens = [tpl[0] for tpl in matches]
+    n_terminus = None
+    for nitrogen in nitrogens:
+        count= 0
+        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
+            if neighbor.GetSymbol() == 'H':
+                count+=1
+        if count == 2:
+            n_terminus = nitrogen
+
+    print(n_terminus)
+    bfs_order = bfs_traversal(input_peptide, n_terminus)
     i = 1
+    used_IDS = []
     for nID in bfs_order:
         for match in matches:
-            if nID in match:
-                amideGroups.append(AmideGroup(match, i, input_peptide))
-                i += 1
+            if nID in match and n_terminus not in match:
+                amide = AmideGroup(match, i, input_peptide)
+                amide_IDS = amide.getIDs()
+                if amide_IDS not in used_IDS:
+                    amideGroups.append(AmideGroup(match, i, input_peptide))
+                    used_IDS.append(amide_IDS)
+                    print(i)
+                    i += 1
+
     return amideGroups
 
 
@@ -314,7 +337,7 @@ for item in os.listdir(main_dir):
         working_dir = main_dir+'/'+item
         os.chdir(working_dir)
 
-        if not os.path.exists(f"{name}-BWdistances.csv"):
+        if os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
             print(name)
             with open(f"{name}.smi", "r") as f:
                 smiles_string = f.readlines()[0]
@@ -322,6 +345,9 @@ for item in os.listdir(main_dir):
             peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
             AllChem.EmbedMolecule(peptide)
             amideGroups = addAmides(peptide)
+            if name == "R4C6":
+                for amide_group in amideGroups:
+                    print(amide_group.getC(),amide_group.getO(),amide_group.getN())
             temp_working_dir = working_dir + f"/{name}_Conformations"
             os.chdir(temp_working_dir)
             distances = []
@@ -331,9 +357,14 @@ for item in os.listdir(main_dir):
                     distances.append(getAmideDistances(amideGroups,atom_coordinates))
             os.chdir(working_dir)
             boltzmann_matrix = boltzmann(distances, pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records"))
-            with open(f'{name}-BWdistances.csv', 'w',newline='') as file:
-                writer = csv.writer(file)
-                writer.writerows(boltzmann_matrix)
+
+            boltzmann_matrix =boltzmann_matrix[0]
+
+            df = pd.DataFrame(boltzmann_matrix)
+            df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
+
+
+
 
 
     os.chdir(main_dir)
