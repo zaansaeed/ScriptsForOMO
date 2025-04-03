@@ -9,7 +9,7 @@ import pandas as pd
 from collections import deque
 import math
 
-main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 
 def split_xyz(temp_working_dir,input_file,name):
     with open(input_file, "r") as f:
@@ -45,8 +45,8 @@ def smile_to_mae(smile_string,name): #file with smiles, file wiht names, path to
         temp_smi = os.path.join(working_dir, f"{name}.smi")
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
-
     if not os.path.exists(f"{name}.mae"):
+
         #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         while not os.path.exists(f"{name}.mae"):
@@ -109,7 +109,7 @@ def mae_to_pdb(name,working_dir):
     if not os.path.exists(f"{name}-out.pdb"):
         #os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
         subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
-
+        prev_size = -1
         while not os.path.exists(f"{name}-out.pdb") or os.path.getsize(f"{name}-out.pdb") != prev_size:
             if os.path.exists(f"{name}-out.pdb"):
                 new_size = os.path.getsize(f"{name}-out.pdb")
@@ -128,7 +128,7 @@ def pdb_to_xyz(name,working_dir):
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
-
+        prev_size = -1
         while not os.path.exists(f"{name}-out.xyz") or os.path.getsize(f"{name}-out.xyz") != prev_size:
             if os.path.exists(f"{name}-out.xyz"):
                 new_size = os.path.getsize(f"{name}-out.xyz")
@@ -298,10 +298,11 @@ def xyz_to_array(xyz_file):
     return coordinates
 
 
-def boltzmann(values, properties_of_each_conformer):
+def boltzmann(values, working_dir,name):
     numerator = 0
     denominator = 0
     boltzmann_results = []
+    properties_of_each_conformer =pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records")
     new_array = []
     for amide_array in range(len(values)):
         new_array = []
@@ -330,7 +331,7 @@ def boltzmann(values, properties_of_each_conformer):
 
 def boltzmann_weight_energies(name,working_dir):
     os.chdir(working_dir)
-    if os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
+    if not os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
         print(name)
         with open(f"{name}.smi", "r") as f:
             smiles_string = f.readlines()[0]
@@ -338,9 +339,7 @@ def boltzmann_weight_energies(name,working_dir):
         peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
         AllChem.EmbedMolecule(peptide)
         amideGroups = addAmides(peptide)
-        if name == "R4C6":
-            for amide_group in amideGroups:
-                print(amide_group.getC(),amide_group.getO(),amide_group.getN())
+
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
         distances = []
@@ -349,7 +348,7 @@ def boltzmann_weight_energies(name,working_dir):
                 atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
                 distances.append(getAmideDistances(amideGroups,atom_coordinates))
         os.chdir(working_dir)
-        boltzmann_matrix = boltzmann(distances, pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records"))
+        boltzmann_matrix = boltzmann(distances, working_dir,name)
 
         boltzmann_matrix =boltzmann_matrix[0]
 
