@@ -1,44 +1,30 @@
 import os
-import subprocess
-# Set paths
-schrodinger_path ="/opt/schrodinger/suites2024-3/"
+import functions_for_smile_to_xyz as fs
+
+
+#schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
-working_dir = os.path.abspath("/Users/zaansaeed/maestro_files") #set working directory
-os.chdir(working_dir)
-# Input SMILES file
-print(working_dir)
-input_file = "molecule_1.smi"
-
-# Read the input SMILES file
-with open(input_file, "r") as f:
-    lines = f.readlines()
-
-# Process each SMILES string individually
-for i, line in enumerate(lines):
-    parts = line.strip().split()
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary")
+smiles_input_file = "all_peptides.smi"
+names_input_file = "all_names.txt"
 
 
-    smiles = parts[0]  # First part is the SMILES string
-    name = parts[1] if len(parts) > 1 else f"molecule_{i+1}"  # Use name if available, else auto-name
+os.chdir(main_dir)
+with open(smiles_input_file, "r") as f:
+    smiles_lines = f.readlines()
+with open(names_input_file, "r") as f:
+    names_lines = f.readlines()
 
-    temp_smi = os.path.join(working_dir, f"{name}.smi")
 
-    # Write SMILES to a temporary .smi file
-    with open(temp_smi, "w") as temp_file:
-        temp_file.write(f"{smiles} {name}\n")
 
-    # Output .mae file
-    output_mae = os.path.join(working_dir, f"{name}.mae")
+for i, name in enumerate(names_lines):
+    working_dir =main_dir+f"/Peptide_{name}"
+    print(name)
 
-    # Run LigPrep for the individual molecule
-    ligprep_command = ["/opt/schrodinger/suites2024-3/ligprep", "-ismi", name+".smi", "-omae", name+".mae"]
-
-    try:
-        print(f"Processing {name}...")
-        #subprocess.run(ligprep_command,check=True,shell=True)
-        os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae output.mae")
-        print(f"Generated: {output_mae}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error processing {name}: {e}")
-
-print(f"All .mae files are saved in {working_dir}/")
+    fs.smile_to_mae(smiles_lines[i], name)
+    fs.run_confsearch(name,working_dir)
+    fs.mae_to_pdb(name,working_dir)
+    fs.pdb_to_xyz(name,working_dir)
+    fs.xyz_to_individual_xyz(name,working_dir)
+    fs.extract_energies_to_csv(name,working_dir)
+    fs.boltzmann(name,working_dir)
