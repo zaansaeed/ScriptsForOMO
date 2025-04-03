@@ -9,9 +9,9 @@ import pandas as pd
 from collections import deque
 import math
 
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary")
 
-
-def split_xyz(input_file):
+def split_xyz(temp_working_dir,input_file,name):
     with open(input_file, "r") as f:
         lines = f.readlines()
     with open(input_file, "r") as f:
@@ -29,24 +29,11 @@ def split_xyz(input_file):
             f.writelines(conf)
 
 
-schrodinger_path ="/opt/schrodinger/suites2024-3/"
-# Define the working directory (where results will be stored)
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
-os.chdir(main_dir)
-smiles_input_file = "all_peptides.smi"
-names_input_file = "all_names.txt"
 
+def smile_to_mae(smile_string,name): #file with smiles, file wiht names, path to folder
+    os.chdir(main_dir)
+    # Process each SMILES string individually in Smiles_input_file and also add name
 
-with open(smiles_input_file, "r") as f:
-    smiles_lines = f.readlines()
-with open(names_input_file, "r") as f:
-    names_lines = f.readlines()
-
-# Process each SMILES string individually in Smiles_input_file and also add name
-for i, line in enumerate(smiles_lines):
-    parts = line.strip().split()
-    smile_string = parts[0]
-    name = names_lines[i].strip()
     folder_name = "Peptide_"+name
 
     if not os.path.exists(folder_name):     #if the folder already exists, skip - otherwise continue
@@ -54,20 +41,19 @@ for i, line in enumerate(smiles_lines):
     working_dir = main_dir+'/'+folder_name
 
     os.chdir(working_dir)
-
     if not os.path.exists(f"{name}.smi"):
         temp_smi = os.path.join(working_dir, f"{name}.smi")
-
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
 
-    if not os.path.exists(name+".mae"):
+    if not os.path.exists(f"{name}.mae"):
         #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         while not os.path.exists(f"{name}.mae"):
             print("waiting for smile to .mae")
             time.sleep(1)
 
+    os.chdir(main_dir)
 
 
 
@@ -75,6 +61,8 @@ for i, line in enumerate(smiles_lines):
 
 
 
+def run_confsearch(name,working_dir):
+    os.chdir(working_dir)
     #we now have a .mae file of the smile string we will run conf search on. we need to make confsearch file
     if not os.path.exists(name):
         conf_search_file = os.path.join(working_dir, f"{name}")
@@ -111,11 +99,13 @@ for i, line in enumerate(smiles_lines):
                 prev_size = new_size
             time.sleep(60)
             print(f"Waiting for conf search for {name}...")
+    os.chdir(main_dir)
 
 
 
-
+def mae_to_pdb(name,working_dir):
     #convert to pdb
+    os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.pdb"):
         #os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
         subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
@@ -129,10 +119,13 @@ for i, line in enumerate(smiles_lines):
                 prev_size = new_size
             time.sleep(30)
             print(f"waiting to convert output to pdb {name}...")
+    os.chdir(main_dir)
 
 
 
+def pdb_to_xyz(name,working_dir):
     #convert to xyz
+    os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
 
@@ -145,18 +138,22 @@ for i, line in enumerate(smiles_lines):
                 prev_size = new_size
             time.sleep(10)
             print(f"waiting to convert pdb to xyz {name}...")
+    os.chdir(main_dir)
 
 
-
-
+def xyz_to_individual_xyz(name,working_dir):
+    os.chdir(working_dir)
     if not os.path.exists(f"{name}_Conformations"):
         os.mkdir(f"{name}_Conformations")
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
-        split_xyz(working_dir+f"/{name}-out.xyz")
+        split_xyz(temp_working_dir,working_dir+f"/{name}-out.xyz",name)
 
+    os.chdir(main_dir)
+
+
+def extract_energies_to_csv(name,working_dir):
     os.chdir(working_dir)
-
     if not os.path.exists(f"{name}-energies.csv"):
         with open(f"{name}.log", "r") as f:
             conformations_list = []
@@ -169,8 +166,6 @@ for i, line in enumerate(smiles_lines):
         row_labels = [f"Conformation{i}" for i in range(1,num_energies+1)]
         df.index =row_labels
         df.to_csv(f"{name}-energies.csv")
-
-
 
     os.chdir(main_dir)
 
@@ -330,43 +325,36 @@ def boltzmann(values, properties_of_each_conformer):
 
     return boltzmann_results
 
-for item in os.listdir(main_dir):
-    if item.startswith('Peptide_'):
 
-        name = item[8:]
-        working_dir = main_dir+'/'+item
+
+
+def boltzmann_weight_energies(name,working_dir):
+    os.chdir(working_dir)
+    if os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
+        print(name)
+        with open(f"{name}.smi", "r") as f:
+            smiles_string = f.readlines()[0]
+
+        peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
+        AllChem.EmbedMolecule(peptide)
+        amideGroups = addAmides(peptide)
+        if name == "R4C6":
+            for amide_group in amideGroups:
+                print(amide_group.getC(),amide_group.getO(),amide_group.getN())
+        temp_working_dir = working_dir + f"/{name}_Conformations"
+        os.chdir(temp_working_dir)
+        distances = []
+        for conformation_xyz in os.listdir(temp_working_dir):
+            if conformation_xyz.endswith('.xyz'):
+                atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
+                distances.append(getAmideDistances(amideGroups,atom_coordinates))
         os.chdir(working_dir)
+        boltzmann_matrix = boltzmann(distances, pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records"))
 
-        if os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
-            print(name)
-            with open(f"{name}.smi", "r") as f:
-                smiles_string = f.readlines()[0]
+        boltzmann_matrix =boltzmann_matrix[0]
 
-            peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
-            AllChem.EmbedMolecule(peptide)
-            amideGroups = addAmides(peptide)
-            if name == "R4C6":
-                for amide_group in amideGroups:
-                    print(amide_group.getC(),amide_group.getO(),amide_group.getN())
-            temp_working_dir = working_dir + f"/{name}_Conformations"
-            os.chdir(temp_working_dir)
-            distances = []
-            for conformation_xyz in os.listdir(temp_working_dir):
-                if conformation_xyz.endswith('.xyz'):
-                    atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
-                    distances.append(getAmideDistances(amideGroups,atom_coordinates))
-            os.chdir(working_dir)
-            boltzmann_matrix = boltzmann(distances, pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records"))
-
-            boltzmann_matrix =boltzmann_matrix[0]
-
-            df = pd.DataFrame(boltzmann_matrix)
-            df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
-
-
-
-
-
+        df = pd.DataFrame(boltzmann_matrix)
+        df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
     os.chdir(main_dir)
 
 
