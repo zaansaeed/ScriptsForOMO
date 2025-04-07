@@ -1,6 +1,6 @@
 import os
 import functions_for_smile_to_xyz as fs
-
+import ML_functions as ML
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
@@ -20,9 +20,8 @@ with open(names_input_file, "r") as f:
 
 
 
-for i, name in enumerate(names_lines):
+for i, name in enumerate(names_lines): #processing : smiles -> xyzs
     working_dir =main_dir+f"/Peptide_{name}"
-    print(working_dir)
     print(name)
 
     fs.smile_to_mae(smiles_lines[i], name)
@@ -32,3 +31,14 @@ for i, name in enumerate(names_lines):
     fs.xyz_to_individual_xyz(name,working_dir)
     fs.extract_energies_to_csv(name,working_dir)
     fs.boltzmann_weight_energies(name,working_dir)
+
+
+outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))
+
+X = ML.create_X(main_dir) #ready for input
+Y = ML.create_Y(outputs,.75) #ready for input
+
+print(len(outputs))
+
+
+ML.run_RFC(X,Y)

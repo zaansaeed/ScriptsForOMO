@@ -234,8 +234,8 @@ def addAmides(input_peptide):
     matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
     matches = matches1 +matches2
-    print(Chem.MolToSmarts(input_peptide).replace("#6",'C').replace('#8','O').replace('#7','N'))
-    print(matches)
+    #print(Chem.MolToSmarts(input_peptide).replace("#6",'C').replace('#8','O').replace('#7','N'))
+    #print(matches)
     nitrogens = [tpl[0] for tpl in matches]
     n_terminus = None
     for nitrogen in nitrogens:
@@ -246,7 +246,6 @@ def addAmides(input_peptide):
         if count == 2:
             n_terminus = nitrogen
 
-    print(n_terminus)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
     i = 1
     used_IDS = []
@@ -258,8 +257,8 @@ def addAmides(input_peptide):
                 if amide_IDS not in used_IDS:
                     amideGroups.append(AmideGroup(match, i, input_peptide))
                     used_IDS.append(amide_IDS)
-                    print(i)
                     i += 1
+    print(i)
 
     return amideGroups
 
