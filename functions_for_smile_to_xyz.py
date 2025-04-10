@@ -234,8 +234,7 @@ def addAmides(input_peptide):
     matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
     matches = matches1 +matches2
-    #print(Chem.MolToSmarts(input_peptide).replace("#6",'C').replace('#8','O').replace('#7','N'))
-    #print(matches)
+
     nitrogens = [tpl[0] for tpl in matches]
     n_terminus = None
     for nitrogen in nitrogens:

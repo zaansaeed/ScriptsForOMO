@@ -38,7 +38,9 @@ outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))
 X = ML.create_X(main_dir) #ready for input
 Y = ML.create_Y(outputs,.75) #ready for input
 
-print(len(outputs))
+testing = X[0]
 
 
-ML.run_RFC(X,Y)
+#ML.run_RFR(X,outputs)
+ML.run_SVR(X,outputs)
+#ML.run_LR(X,outputs)
