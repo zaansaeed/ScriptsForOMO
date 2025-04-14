@@ -1,10 +1,12 @@
 import os
-from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
+from sklearn.neural_network import MLPRegressor
+from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, mean_absolute_error
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
@@ -13,9 +15,10 @@ from sklearn.svm import SVR
 def plot_results(true_labels_for_testing,y_pred,model):
     plt.plot(true_labels_for_testing, label="Actual", marker='o')
     plt.plot(y_pred, label="Predicted", marker='x')
-    plt.title(f"{model} - Final 5 Peptides")
+    plt.title(f"{model} - Peptides")
     plt.xlabel("Peptide Index")
     plt.ylabel("Target Value")
+    plt.ylim(0, 1)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -89,18 +92,19 @@ def run_RFC(X,Y):
     print(classification_report(Y_test, y_pred))
 
 def run_RFR(X,Y):
-    testing = X[45:54] #~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing= Y[45:54]
-    X = np.delete(X,list(range(45,54)),0)
-    Y = np.delete(Y,list(range(45,54)),0)
+    testing = X[10:15] #~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing= Y[10:15]
+    X = np.delete(X,list(range(10,15)),0)
+    Y = np.delete(Y,list(range(10,15)),0)
     #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=42)
 
     param_grid = {
-        'n_estimators': [50,100, 200],
-        'max_depth': [None, 10, 20],
-        'min_samples_split': [2, 4],
-        'bootstrap': [True, False],
-        'max_features': ['sqrt', 'log2']
+        'n_estimators': [200, 400, 600],
+        'max_depth': [None, 40, 80],
+        'min_samples_split': [2, 3],
+        'min_samples_leaf': [1],  # Ensure deep trees are allowed
+        'bootstrap': [True],
+        'max_features': ['sqrt']
     }
     rf = RandomForestRegressor(random_state=42)
     grid_search = GridSearchCV(
@@ -121,58 +125,60 @@ def run_RFR(X,Y):
     print("Results on testing data:,", y_pred)
     print("True percents", true_labels_for_testing)
     print("best params:", grid_search.best_params_)
-
+    scores = cross_val_score(grid_search, X, Y, cv=5, scoring='neg_mean_squared_error')
+    print(f"Mean cross-validation score: {-scores.mean()}")
     plot_results(true_labels_for_testing, y_pred,"random forest")
 
 
 def run_SVR(X,Y):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
-    testing = X[45:54]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[45:54]
-    X = np.delete(X, list(range(45, 54)), 0)
-    Y = np.delete(Y, list(range(45, 54)), 0)
-    svr=SVR()
-
+    testing = X[10:15]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing = Y[10:15]
+    X = np.delete(X, list(range(10, 15)), 0)
+    Y = np.delete(Y, list(range(10, 15)), 0)
     param_grid = {
-        'kernel': ['rbf','linear','poly'],  # 'poly' optional, but slow
-        'C': [1,10,2],
-        'epsilon': [0.001,0.01, 0.05],
-        'gamma': ['scale'],  # Only affects 'rbf' and 'poly'
+        'C': [1, 10, 50, 100],
+        'epsilon': [0.01, 0.05, 0.1, 0.2],
+        'gamma': [0.01, 0.1, 'scale', 'auto'],
+        'kernel': ['rbf','poly','sigmoid'],
     }
-    grid_search = GridSearchCV(
-        estimator=svr,
-        param_grid=param_grid,
-        scoring='neg_mean_absolute_error',
-        cv=5,
-        n_jobs=-1,
-        verbose=1
-    )
 
+    svr = SVR()
+    grid_search = GridSearchCV(svr, param_grid, scoring='neg_mean_squared_error', cv=5, n_jobs=-1)
+    svr.fit(X, Y)
+    #best_model = grid_search.best_estimator_
 
-    grid_search.fit(X,Y)
-    y_pred = grid_search.predict(testing)
+    y_pred = svr.predict(testing)
     print("predicted: ", y_pred)
     print("Actual: ", true_labels_for_testing)
     print("mse: ", mean_squared_error(true_labels_for_testing, y_pred))
-    print("best params:" , grid_search.best_params_)
+    scores = cross_val_score(svr, X, Y, cv=5, scoring='neg_mean_squared_error')
+    print(f"Mean cross-validation score: {-scores.mean()}")
+    #print("Best params:", grid_search.best_params_)
 
-    plot_results(true_labels_for_testing, y_pred,"svr ")
+    plot_results(true_labels_for_testing, y_pred, "SVR (tuned)")
 
 
 def run_LR(X,Y):
 
-    testing = X[45:54]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[45:54]
-    X = np.delete(X, list(range(45, 54)), 0)
-    Y = np.delete(Y, list(range(45, 54)), 0)
-    lr = make_pipeline(StandardScaler(), PolynomialFeatures(degree=2),Ridge(alpha=1))
-
+    testing = X[5:10]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing = Y[5:10]
+    X = np.delete(X, list(range(5, 10)), 0)
+    Y = np.delete(Y, list(range(5, 10)), 0)
+    lr = make_pipeline(
+        StandardScaler(),
+        PolynomialFeatures(degree=3),
+        PCA(n_components=15),
+        ElasticNet(alpha=0.001, l1_ratio=0.8, max_iter=10000)
+    )
     lr.fit(X, Y)
     y_pred = lr.predict(testing)
     print("predicted: ", np.clip(y_pred,0,1))
     print("Actual: ", true_labels_for_testing)
+    print("MAE:", mean_absolute_error(true_labels_for_testing, y_pred))
     print("mse: ", mean_squared_error(true_labels_for_testing, y_pred))
     plot_results(true_labels_for_testing, np.clip(y_pred,0,1),"lr")
-
+    scores = cross_val_score(lr, X, Y, cv=5, scoring='neg_mean_squared_error')
+    print(f"Mean cross-validation score: {-scores.mean()}")
 
