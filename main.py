@@ -5,7 +5,7 @@ import ML_functions as ML
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
 #/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 
@@ -41,6 +41,6 @@ Y = ML.create_Y(outputs,.75) #ready for input
 testing = X[0]
 
 
-#ML.run_RFR(X,outputs)
-ML.run_SVR(X,outputs)
+ML.run_RFR(X,outputs)
+#ML.run_SVR(X,outputs)
 #ML.run_LR(X,outputs)
