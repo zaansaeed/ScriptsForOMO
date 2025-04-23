@@ -2,6 +2,7 @@ import csv
 import os
 import subprocess
 import time
+from turtledemo.penrose import start
 
 from rdkit.Chem import AllChem
 from rdkit import Chem
@@ -235,7 +236,14 @@ def addAmides(input_peptide):
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
     matches = matches1 +matches2
 
-    nitrogens = [tpl[0] for tpl in matches]
+    #nitrogens = [tpl[0] for tpl in matches]
+    nitrogens =[]
+    for atom in input_peptide.GetAtoms():
+        if atom.GetSymbol() == 'N':
+            nitrogens.append(atom.GetIdx())
+
+
+
     n_terminus = None
     for nitrogen in nitrogens:
         count= 0
@@ -244,7 +252,7 @@ def addAmides(input_peptide):
                 count+=1
         if count == 2:
             n_terminus = nitrogen
-
+    print(n_terminus)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
     i = 1
     used_IDS = []

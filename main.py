@@ -5,7 +5,7 @@ import ML_functions as ML
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
 #/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary
-main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 
@@ -23,24 +23,30 @@ with open(names_input_file, "r") as f:
 for i, name in enumerate(names_lines): #processing : smiles -> xyzs
     working_dir =main_dir+f"/Peptide_{name}"
     print(name)
-
     fs.smile_to_mae(smiles_lines[i], name)
+    print("DONE CONVERTING TO MAE")
     fs.run_confsearch(name,working_dir)
+    print("DONE RUNNING CONFSEARCH")
     fs.mae_to_pdb(name,working_dir)
+    print("DONE CONVERTING MAE TO PDB")
     fs.pdb_to_xyz(name,working_dir)
+    print("DONE CONVERTING PDB TO XYZ")
     fs.xyz_to_individual_xyz(name,working_dir)
+    print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
     fs.extract_energies_to_csv(name,working_dir)
+    print("DONE EXTRACTING ENERGIES")
     fs.boltzmann_weight_energies(name,working_dir)
+    print("BOLTZMANN WEIGHTED XYZ CSV CREATED")
 
 
-outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))
+#outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
-X = ML.create_X(main_dir) #ready for input
-Y = ML.create_Y(outputs,.75) #ready for input
+#X = ML.create_X(main_dir) #ready for input
+#Y = ML.create_Y(outputs,.75) #ready for input
 
-testing = X[0]
+#testing = X[0]
 
 
-ML.run_RFR(X,outputs)
+#ML.run_RFR(X,outputs)
 #ML.run_SVR(X,outputs)
 #ML.run_LR(X,outputs)
