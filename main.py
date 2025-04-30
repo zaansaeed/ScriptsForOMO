@@ -19,24 +19,22 @@ with open(names_input_file, "r") as f:
     names_lines =[name.strip() for name in names_lines]
 
 
-
+update_matrices = 0
 for i, name in enumerate(names_lines): #processing : smiles -> xyzs
     working_dir =main_dir+f"/Peptide_{name}"
     print(name)
-    fs.smile_to_mae(smiles_lines[i], name)
-    print("DONE CONVERTING TO MAE")
-    fs.run_confsearch(name,working_dir)
-    print("DONE RUNNING CONFSEARCH")
-    fs.mae_to_pdb(name,working_dir)
-    print("DONE CONVERTING MAE TO PDB")
-    fs.pdb_to_xyz(name,working_dir)
-    print("DONE CONVERTING PDB TO XYZ")
-    fs.xyz_to_individual_xyz(name,working_dir)
-    print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
-    fs.extract_energies_to_csv(name,working_dir)
-    print("DONE EXTRACTING ENERGIES")
-    fs.boltzmann_weight_energies(name,working_dir)
-    print("BOLTZMANN WEIGHTED XYZ CSV CREATED")
+
+    if update_matrices == 1:
+        if working_dir in os.listdir(main_dir):
+            fs.boltzmann_weight_energies(name, working_dir, update_matrices)
+    else:
+        fs.smile_to_mae(smiles_lines[i], name)
+        fs.run_confsearch(name,working_dir)
+        fs.mae_to_pdb(name,working_dir)
+        fs.pdb_to_xyz(name,working_dir)
+        fs.xyz_to_individual_xyz(name,working_dir)
+        fs.extract_energies_to_csv(name,working_dir)
+        fs.boltzmann_weight_energies(name,working_dir,update_matrices)
 
 
 #outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))

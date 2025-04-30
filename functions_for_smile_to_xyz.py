@@ -46,13 +46,14 @@ def smile_to_mae(smile_string,name): #file with smiles, file wiht names, path to
         temp_smi = os.path.join(working_dir, f"{name}.smi")
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
+
     if not os.path.exists(f"{name}.mae"):
 
         #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         while not os.path.exists(f"{name}.mae"):
-            print("waiting for smile to .mae")
             time.sleep(1)
+        print("DONE CONVERTING TO MAE")
 
     os.chdir(main_dir)
 
@@ -95,11 +96,12 @@ def run_confsearch(name,working_dir):
             if os.path.exists(f"{name}-out.mae"):
                 new_size = os.path.getsize(f"{name}-out.mae")
                 if new_size == prev_size:
-                    print("Conf search completed")
                     break
                 prev_size = new_size
             time.sleep(60)
-            print(f"Waiting for conf search for {name}...")
+
+        print("DONE RUNNING CONFSEARCH")
+
     os.chdir(main_dir)
 
 
@@ -115,11 +117,12 @@ def mae_to_pdb(name,working_dir):
             if os.path.exists(f"{name}-out.pdb"):
                 new_size = os.path.getsize(f"{name}-out.pdb")
                 if new_size == prev_size:
-                    print("converted to pdb")
                     break
                 prev_size = new_size
             time.sleep(30)
-            print(f"waiting to convert output to pdb {name}...")
+
+        print("DONE CONVERTING MAE TO PDB")
+
     os.chdir(main_dir)
 
 
@@ -134,11 +137,12 @@ def pdb_to_xyz(name,working_dir):
             if os.path.exists(f"{name}-out.xyz"):
                 new_size = os.path.getsize(f"{name}-out.xyz")
                 if new_size == prev_size:
-                    print("converted to xyz")
                     break
                 prev_size = new_size
             time.sleep(10)
-            print(f"waiting to convert pdb to xyz {name}...")
+
+        print("DONE CONVERTING PDB TO XYZ")
+
     os.chdir(main_dir)
 
 
@@ -149,6 +153,8 @@ def xyz_to_individual_xyz(name,working_dir):
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
         split_xyz(temp_working_dir,working_dir+f"/{name}-out.xyz",name)
+
+        print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
 
     os.chdir(main_dir)
 
@@ -167,6 +173,8 @@ def extract_energies_to_csv(name,working_dir):
         row_labels = [f"Conformation{i}" for i in range(1,num_energies+1)]
         df.index =row_labels
         df.to_csv(f"{name}-energies.csv")
+
+        print("DONE EXTRACTING ENERGIES")
 
     os.chdir(main_dir)
 
@@ -252,7 +260,6 @@ def addAmides(input_peptide):
                 count+=1
         if count == 2:
             n_terminus = nitrogen
-    print(n_terminus)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
     i = 1
     used_IDS = []
@@ -335,10 +342,9 @@ def boltzmann(values, working_dir,name):
 
 
 
-def boltzmann_weight_energies(name,working_dir):
+def boltzmann_weight_energies(name,working_dir, update_matrices):
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWdistances.csv"): #hcange to not
-        print(name)
+    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices: #hcange to not
         with open(f"{name}.smi", "r") as f:
             smiles_string = f.readlines()[0]
 
@@ -360,6 +366,12 @@ def boltzmann_weight_energies(name,working_dir):
 
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
+
+    if update_matrices:
+        print("UPDATED BOLTZMANN MATRIX")
+    else:
+        print("BOLTZMANN WEIGHTED XYZ CSV CREATED")
+
     os.chdir(main_dir)
 
 
