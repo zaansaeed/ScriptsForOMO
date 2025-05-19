@@ -9,6 +9,9 @@ from rdkit import Chem
 import pandas as pd
 from collections import deque
 import math
+import numpy as np
+
+from main import working_dir
 
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 
@@ -178,6 +181,9 @@ def extract_energies_to_csv(name,working_dir):
 
     os.chdir(main_dir)
 
+
+
+
 #+====================================================================================
 
 def bfs_traversal(mol, startingID):
@@ -238,6 +244,22 @@ class AmideGroup:
     def getGroupNum(self):
         return self.group_num
 
+def find_n_terminus(input_peptide):
+    nitrogens = []
+    for atom in input_peptide.GetAtoms():
+        if atom.GetSymbol() == 'N':
+            nitrogens.append(atom.GetIdx())
+
+    n_terminus = None
+    for nitrogen in nitrogens:
+        count = 0
+        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
+            if neighbor.GetSymbol() == 'H':
+                count += 1
+        if count == 2:
+            n_terminus = nitrogen
+    return n_terminus
+
 def addAmides(input_peptide):
     amideGroups = []
     matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
@@ -245,21 +267,8 @@ def addAmides(input_peptide):
     matches = matches1 +matches2
 
     #nitrogens = [tpl[0] for tpl in matches]
-    nitrogens =[]
-    for atom in input_peptide.GetAtoms():
-        if atom.GetSymbol() == 'N':
-            nitrogens.append(atom.GetIdx())
+    n_terminus = find_n_terminus(input_peptide)
 
-
-
-    n_terminus = None
-    for nitrogen in nitrogens:
-        count= 0
-        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
-            if neighbor.GetSymbol() == 'H':
-                count+=1
-        if count == 2:
-            n_terminus = nitrogen
     bfs_order = bfs_traversal(input_peptide, n_terminus)
     i = 1
     used_IDS = []
@@ -373,6 +382,177 @@ def boltzmann_weight_energies(name,working_dir, update_matrices):
         print("BOLTZMANN WEIGHTED XYZ CSV CREATED")
 
     os.chdir(main_dir)
+
+
+
+
+
+
+################################################
+################################################
+
+def load_xyz_coords(mol, xyz_path):
+    conf = Chem.Conformer(mol.GetNumAtoms())
+
+    with open(xyz_path, 'r') as f:
+        lines = f.readlines()
+        lines = lines[2:]
+
+        for i, line in enumerate(lines):
+            tokens = line.strip().split()
+            if len(tokens) < 4:
+                continue
+            x, y, z = map(float, tokens[1:4])
+            conf.SetAtomPosition(i, (x, y, z))
+
+    mol.RemoveAllConformers()
+    mol.AddConformer(conf, assignId=True)
+    return mol
+
+def calculate_dihedrals(residue,mol):
+    def get_dihedral_angle(p1, p2, p3, p4):
+        """Calculate the dihedral angle between four points in 3D space."""
+        # Convert to numpy arrays
+        p1, p2, p3, p4 = map(np.array, (p1, p2, p3, p4))
+
+        # Bond vectors
+        b1 = p2 - p1
+        b2 = p3 - p2
+        b3 = p4 - p3
+
+        # Normal vectors
+        n1 = np.cross(b1, b2)
+        n2 = np.cross(b2, b3)
+
+        # Normalize normals
+        n1 /= np.linalg.norm(n1)
+        n2 /= np.linalg.norm(n2)
+
+        # Normalize b2
+        b2_unit = b2 / np.linalg.norm(b2)
+
+        # Compute the angle
+        x = np.dot(n1, n2)
+        y = np.dot(np.cross(n1, n2), b2_unit)
+
+        angle = np.arctan2(y, x)
+        return np.degrees(angle)
+
+
+
+    if len(residue) == 5: #n-terminus case (normal) (5000,5000,psi) [NH2]C[C](=O)[N]
+        temp_dihedrals = []
+        temp_dihedrals.append(5000)
+        temp_dihedrals.append(5000)
+        p1= mol.GetConformer().GetAtomPosition(residue[0])
+        p2 = mol.GetConformer().GetAtomPosition(residue[1])
+        p3= mol.GetConformer().GetAtomPosition(residue[2])
+        p4 = mol.GetConformer().GetAtomPosition(residue[4])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        return temp_dihedrals
+
+    if len(residue) == 6: #n-terminus case (abnormal) (5000,theta,psi) [NH2]CC[C](=O)[N]
+        temp_dihedrals = []
+        temp_dihedrals.append(5000)
+        p1= mol.GetConformer().GetAtomPosition(residue[0])
+        p2= mol.GetConformer().GetAtomPosition(residue[1])
+        p3=mol.GetConformer().GetAtomPosition(residue[2])
+        p4 = mol.GetConformer().GetAtomPosition(residue[3])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        p1= mol.GetConformer().GetAtomPosition(residue[1])
+        p2= mol.GetConformer().GetAtomPosition(residue[2])
+        p3=mol.GetConformer().GetAtomPosition(residue[3])
+        p4 = mol.GetConformer().GetAtomPosition(residue[5])
+
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        return temp_dihedrals
+    if len(residue) == 7: #normal   (phi,5000,psi) C(=O)NCC(=O)N
+        temp_dihedrals = []
+        p1= mol.GetConformer().GetAtomPosition(residue[0])
+        p2 = mol.GetConformer().GetAtomPosition(residue[2])
+        p3 = mol.GetConformer().GetAtomPosition(residue[3])
+        p4 = mol.GetConformer().GetAtomPosition(residue[4])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        temp_dihedrals.append(5000)
+        p1= mol.GetConformer().GetAtomPosition(residue[2])
+        p2 = mol.GetConformer().GetAtomPosition(residue[3])
+        p3 = mol.GetConformer().GetAtomPosition(residue[4])
+        p4 = mol.GetConformer().GetAtomPosition(residue[6])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        return temp_dihedrals
+
+    if len(residue)==8: #abnormal case (phi,theta,psi) C(=O)NCCC(=O)N
+        temp_dihedrals = []
+        p1= mol.GetConformer().GetAtomPosition(residue[0])
+        p2 = mol.GetConformer().GetAtomPosition(residue[2])
+        p3 = mol.GetConformer().GetAtomPosition(residue[3])
+        p4 = mol.GetConformer().GetAtomPosition(residue[4])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        p1= mol.GetConformer().GetAtomPosition(residue[2])
+        p2 = mol.GetConformer().GetAtomPosition(residue[3])
+        p3 = mol.GetConformer().GetAtomPosition(residue[4])
+        p4 = mol.GetConformer().GetAtomPosition(residue[5])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        p1= mol.GetConformer().GetAtomPosition(residue[3])
+        p2 = mol.GetConformer().GetAtomPosition(residue[4])
+        p3 = mol.GetConformer().GetAtomPosition(residue[5])
+        p4 = mol.GetConformer().GetAtomPosition(residue[7])
+        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        return temp_dihedrals
+
+
+
+def extract_boltzmann_weighted_dihedral(smiles_string, name):
+    os.chdir(main_dir)
+    for folder in os.listdir(main_dir):
+
+        if os.path.isdir(folder):
+            os.chdir(folder)
+            working_dir = os.getcwd()
+            name = folder.split("_")[1]
+            if not os.path.exists(f"{name}-BWdihedrals.csv"):
+                peptide_dihedrals = []
+                smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
+                for conformation_xyz in os.listdir(f"{name}_Conformations"):
+                    if conformation_xyz.endswith('.xyz'):
+                        mol = Chem.MolFromSmiles(smiles_string)
+                        mol = Chem.AddHs(mol)
+                        mol = load_xyz_coords(mol, conformation_xyz)
+                        n_terminus = find_n_terminus(mol)
+                        nitrogen_order = bfs_traversal(mol, n_terminus)
+                        n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
+                        n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
+                        normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
+                        abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
+                        all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
+                        all_residues = list(all_residues)
+                        ############## get rid of asparagine
+                        query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
+                        query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
+                        asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(query2)
+                        for asparagine in asparagines:
+                            for residue in all_residues:
+                                if asparagine[-1] in residue:
+                                    all_residues.remove(residue)
+
+                        ordered_residues = []
+                        for id in nitrogen_order:
+                            for residue in all_residues:
+                                if id in residue:
+                                    ordered_residues.append(residue)
+                                    all_residues.remove(residue)
+                        conformation_dihedrals = []
+                        for residue in ordered_residues:
+                            conformation_dihedrals.append(calculate_dihedrals(residue,mol))
+                        print(conformation_dihedrals)
+                        len(conformation_dihedrals)
+                        peptide_dihedrals.append(conformation_dihedrals)
+
+                #boltzmann weight the n many conformation 6x3 matrices
+                boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
+                df = pd.DataFrame(boltzmann_matrix)
+                df.to_csv(working_dir+f'/{name}-BWdihedrals.csv', index=False, header=False)
+
 
 
 

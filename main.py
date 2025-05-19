@@ -2,6 +2,9 @@ import os
 import functions_for_smile_to_xyz as fs
 import ML_functions as ML
 
+
+
+
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
 #/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary
@@ -20,6 +23,8 @@ with open(names_input_file, "r") as f:
 
 
 update_matrices = 0
+
+
 for i, name in enumerate(names_lines): #processing : smiles -> xyzs
     working_dir =main_dir+f"/Peptide_{name}"
     print(name)
@@ -36,15 +41,15 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         fs.extract_energies_to_csv(name,working_dir)
         fs.boltzmann_weight_energies(name,working_dir,update_matrices)
 
+fs.extract_boltzmann_weighted_dihedral()
 
-#outputs = ML.six_over_target_percents(ML.create_outputs(main_dir))
+#Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
 #X = ML.create_X(main_dir) #ready for input
-#Y = ML.create_Y(outputs,.75) #ready for input
 
 #testing = X[0]
 
 
-#ML.run_RFR(X,outputs)
-#ML.run_SVR(X,outputs)
-#ML.run_LR(X,outputs)
+#ML.run_RFR(X,Y)
+#ML.run_SVR(X,Y)
+#ML.run_LR(X,Y)
