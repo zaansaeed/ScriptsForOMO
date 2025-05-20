@@ -11,7 +11,7 @@ from collections import deque
 import math
 import numpy as np
 
-from main import working_dir
+
 
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 
@@ -378,8 +378,7 @@ def boltzmann_weight_energies(name,working_dir, update_matrices):
 
     if update_matrices:
         print("UPDATED BOLTZMANN MATRIX")
-    else:
-        print("BOLTZMANN WEIGHTED XYZ CSV CREATED")
+
 
     os.chdir(main_dir)
 
@@ -502,22 +501,22 @@ def calculate_dihedrals(residue,mol):
 
 
 
-def extract_boltzmann_weighted_dihedral(smiles_string, name):
+def extract_boltzmann_weighted_dihedral():
     os.chdir(main_dir)
     for folder in os.listdir(main_dir):
-
         if os.path.isdir(folder):
+            print(folder)
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
-            if not os.path.exists(f"{name}-BWdihedrals.csv"):
+            if os.path.exists(f"{name}-BWdihedrals.csv"):
                 peptide_dihedrals = []
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):
                     if conformation_xyz.endswith('.xyz'):
                         mol = Chem.MolFromSmiles(smiles_string)
                         mol = Chem.AddHs(mol)
-                        mol = load_xyz_coords(mol, conformation_xyz)
+                        mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
                         n_terminus = find_n_terminus(mol)
                         nitrogen_order = bfs_traversal(mol, n_terminus)
                         n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
@@ -529,7 +528,9 @@ def extract_boltzmann_weighted_dihedral(smiles_string, name):
                         ############## get rid of asparagine
                         query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
                         query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
-                        asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(query2)
+                        query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
+                        query4 = Chem.MolFromSmarts('[NH2]CC[C](=O)[NH2]')
+                        asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(query2) + mol.GetSubstructMatches(query3) + mol.GetSubstructMatches(query4)
                         for asparagine in asparagines:
                             for residue in all_residues:
                                 if asparagine[-1] in residue:
@@ -544,15 +545,18 @@ def extract_boltzmann_weighted_dihedral(smiles_string, name):
                         conformation_dihedrals = []
                         for residue in ordered_residues:
                             conformation_dihedrals.append(calculate_dihedrals(residue,mol))
-                        print(conformation_dihedrals)
-                        len(conformation_dihedrals)
                         peptide_dihedrals.append(conformation_dihedrals)
 
                 #boltzmann weight the n many conformation 6x3 matrices
                 boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
+                boltzmann_matrix = boltzmann_matrix[0]
+                print(len(boltzmann_matrix))
                 df = pd.DataFrame(boltzmann_matrix)
                 df.to_csv(working_dir+f'/{name}-BWdihedrals.csv', index=False, header=False)
+                print("dihedral calculation done for " +name )
+                os.chdir(main_dir)
 
+            os.chdir(main_dir)
 
 
 

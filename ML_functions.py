@@ -32,16 +32,18 @@ def pad_square_dataframe_to_array(df,target_size,fill_value):
     padded[:size,:size] = original
     return pd.DataFrame(padded).values.tolist()
 
-def create_X(main_dir): #takes in csv file and reads into array
+def create_X(main_dir,feature): #takes in csv file and reads into array
     X= []
     for item in os.listdir(main_dir):
         working_dir = os.path.join(main_dir, item)
         if os.path.isdir(working_dir):
             os.chdir(working_dir)
             for file in os.listdir(working_dir):
-                if file.endswith("-BWdistances.csv"):
+                if file.endswith(f"-{feature}.csv"):
                     data = pd.read_csv(file,header=None,index_col=None)
-                    X.append(pad_square_dataframe_to_array(data,5,0))
+                    #X.append(pad_square_dataframe_to_array(data,5,0))
+                    print(working_dir,data.shape)
+                    X.append(pd.DataFrame(data).values.tolist())
     return np.array(X).reshape(len(X),-1)
 
 def create_outputs(main_dir):

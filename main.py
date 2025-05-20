@@ -40,14 +40,15 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         fs.xyz_to_individual_xyz(name,working_dir)
         fs.extract_energies_to_csv(name,working_dir)
         fs.boltzmann_weight_energies(name,working_dir,update_matrices)
-
+print("beginning dihedrals")
 fs.extract_boltzmann_weighted_dihedral()
 
-#Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
-#X = ML.create_X(main_dir) #ready for input
+X = ML.create_X(main_dir, "BWdihedrals") #ready for input
+#feature: BWdistances or BWdihedrals
+Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
-#testing = X[0]
+
 
 
 #ML.run_RFR(X,Y)
