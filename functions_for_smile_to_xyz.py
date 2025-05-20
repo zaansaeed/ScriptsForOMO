@@ -509,7 +509,7 @@ def extract_boltzmann_weighted_dihedral():
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
-            if os.path.exists(f"{name}-BWdihedrals.csv"):
+            if not os.path.exists(f"{name}-BWdihedrals.csv"):
                 peptide_dihedrals = []
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):

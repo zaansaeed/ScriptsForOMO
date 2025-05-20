@@ -42,8 +42,9 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                 if file.endswith(f"-{feature}.csv"):
                     data = pd.read_csv(file,header=None,index_col=None)
                     #X.append(pad_square_dataframe_to_array(data,5,0))
-                    print(working_dir,data.shape)
-                    X.append(pd.DataFrame(data).values.tolist())
+                    print(working_dir, data.shape)
+                    X.append(data.values.tolist())
+
     return np.array(X).reshape(len(X),-1)
 
 def create_outputs(main_dir):
@@ -94,10 +95,10 @@ def run_RFC(X,Y):
     print(classification_report(Y_test, y_pred))
 
 def run_RFR(X,Y):
-    testing = X[10:15] #~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing= Y[10:15]
-    X = np.delete(X,list(range(10,15)),0)
-    Y = np.delete(Y,list(range(10,15)),0)
+    testing = X[20:40]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing = Y[20:40]
+    X = np.delete(X, list(range(20, 40)), 0)
+    Y = np.delete(Y, list(range(20, 40)), 0)
     #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=42)
 
     param_grid = {
@@ -119,14 +120,14 @@ def run_RFR(X,Y):
     )
 
 
-    grid_search.fit(X,Y)
-    y_pred = grid_search.predict(testing)
+    rf.fit(X,Y)
+    y_pred = rf.predict(testing)
     mse = mean_squared_error(true_labels_for_testing, y_pred)
     print("MSE: ", mse)
     print("MAE,", mean_absolute_error(true_labels_for_testing, y_pred))
     print("Results on testing data:,", y_pred)
     print("True percents", true_labels_for_testing)
-    print("best params:", grid_search.best_params_)
+    #print("best params:", grid_search.best_params_)
     scores = cross_val_score(grid_search, X, Y, cv=5, scoring='neg_mean_squared_error')
     print(f"Mean cross-validation score: {-scores.mean()}")
     plot_results(true_labels_for_testing, y_pred,"random forest")
@@ -135,10 +136,10 @@ def run_RFR(X,Y):
 def run_SVR(X,Y):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
-    testing = X[10:15]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[10:15]
-    X = np.delete(X, list(range(10, 15)), 0)
-    Y = np.delete(Y, list(range(10, 15)), 0)
+    testing = X[20:40]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing = Y[20:40]
+    X = np.delete(X, list(range(20, 40)), 0)
+    Y = np.delete(Y, list(range(20, 40)), 0)
     param_grid = {
         'C': [1, 10, 50, 100],
         'epsilon': [0.01, 0.05, 0.1, 0.2],
@@ -164,10 +165,10 @@ def run_SVR(X,Y):
 
 def run_LR(X,Y):
 
-    testing = X[5:10]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[5:10]
-    X = np.delete(X, list(range(5, 10)), 0)
-    Y = np.delete(Y, list(range(5, 10)), 0)
+    testing = X[10:25]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
+    true_labels_for_testing = Y[10:25]
+    X = np.delete(X, list(range(10, 25)), 0)
+    Y = np.delete(Y, list(range(10, 25)), 0)
     lr = make_pipeline(
         StandardScaler(),
         PolynomialFeatures(degree=3),
