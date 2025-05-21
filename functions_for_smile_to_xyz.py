@@ -319,11 +319,30 @@ def xyz_to_array(xyz_file):
         coordinates.append([x, y, z])
     return coordinates
 
+def new_boltzmann(values, working_dir,name):
+    energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
+    energy_vals = energies['Energies'].values
+
+    R = 8.314e-3  # kJ/mol·K
+    T = 298  # Kelvin
+
+    weights = np.exp(-energy_vals / (R * T))
+    weights = weights / np.sum(weights)  # Normalize weights
+
+    weighted_sum = np.zeros_like(values[0], dtype=float)
+
+    for i, arr in enumerate(values):
+        weighted_sum += weights[i] * np.array(arr)
+
+    return weighted_sum
 
 def boltzmann(values, working_dir,name):
 
     boltzmann_results = []
-    properties_of_each_conformer =pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records")
+    energies =pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records")
+    R = 8.314e-3
+    T = 298
+
     new_array = []
     for amide_array in range(len(values)):
         new_array = []
@@ -333,9 +352,9 @@ def boltzmann(values, working_dir,name):
                 denominator = 0
                 numerator = 0
                 answer = 0
-                for k in range(len(properties_of_each_conformer)):
+                for k in range(len(energies)):
                     e_term = math.exp(
-                        -(properties_of_each_conformer[k]['Energies']) / (298 * 8.314 * 10 ** -3))
+                        -(energies[k]['Energies']) / (298 * 8.314 * 10 ** -3))
                     denominator += e_term
 
                     numerator += e_term * values[k][amide_row][amide_col]
