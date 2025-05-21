@@ -52,6 +52,9 @@ Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 print(X.shape)
 print(Y.shape)
 
+
+
+
 #ML.run_RFR(X,Y)
-ML.run_SVR(X,Y)
+#ML.run_SVR(X,Y)
 #ML.run_LR(X,Y)

@@ -3,14 +3,25 @@ from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
-from sklearn.neural_network import MLPRegressor
 from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor, HistGradientBoostingRegressor
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, KFold
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, mean_absolute_error
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 from sklearn.svm import SVR
+from xgboost import XGBRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
+from sklearn.gaussian_process.kernels import RationalQuadratic
+
+def calc_metrics(Y_test, y_pred):
+    mse = mean_squared_error(Y_test, y_pred)
+    print("MSE: ", mse)
+    print("MAE,", mean_absolute_error(Y_test, y_pred))
+    print("Results on testing data:,", y_pred)
+    print("True percents", Y_test)
 
 def plot_results(true_labels_for_testing,y_pred,model):
     plt.plot(true_labels_for_testing, label="Actual", marker='o')
@@ -45,7 +56,11 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                     print(working_dir, data.shape)
                     X.append(data.values.tolist())
 
-    return np.array(X).reshape(len(X),-1)
+    X = np.array(X)
+    X[X>1000] = np.nan
+    print(X[0])
+
+    return X.reshape(len(X),-1)
 
 def create_outputs(main_dir):
     Y =[]
@@ -95,93 +110,65 @@ def run_RFC(X,Y):
     print(classification_report(Y_test, y_pred))
 
 def run_RFR(X,Y):
-    testing = X[20:40]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[20:40]
-    X = np.delete(X, list(range(20, 40)), 0)
-    Y = np.delete(Y, list(range(20, 40)), 0)
-    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=42)
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     param_grid = {
-        'n_estimators': [200, 400, 600],
-        'max_depth': [None, 40, 80],
-        'min_samples_split': [2, 3],
-        'min_samples_leaf': [1],  # Ensure deep trees are allowed
-        'bootstrap': [True],
-        'max_features': ['sqrt']
+        'n_estimators': [ 200,600],  # Fewer trees to keep it lightweight
+        'max_depth': [20, None],  # Shallow trees to prevent overfitting
+        'min_samples_split': [2, 10],  # Try larger splits to regularize
+        'min_samples_leaf': [2, 4],  # Larger leaves reduce model complexity
+        'max_features': ['sqrt'],  # Limit number of features at each split
+        'bootstrap': [True]  # Usually better for small data
     }
     rf = RandomForestRegressor(random_state=42)
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
         scoring='neg_mean_absolute_error',
-        cv=5,
+        cv=8,
         n_jobs=-1,
         verbose=1
     )
 
 
-    rf.fit(X,Y)
-    y_pred = rf.predict(testing)
-    mse = mean_squared_error(true_labels_for_testing, y_pred)
+    rf.fit(X_train,Y_train)
+    y_pred = rf.predict(X_test)
+    mse = mean_squared_error(Y_test, y_pred)
     print("MSE: ", mse)
-    print("MAE,", mean_absolute_error(true_labels_for_testing, y_pred))
+    print("MAE,", mean_absolute_error(Y_test, y_pred))
     print("Results on testing data:,", y_pred)
-    print("True percents", true_labels_for_testing)
+    print("True percents", Y_test)
     #print("best params:", grid_search.best_params_)
-    scores = cross_val_score(grid_search, X, Y, cv=5, scoring='neg_mean_squared_error')
+    scores = cross_val_score(rf, X_train, Y_train, cv=5, scoring='neg_mean_squared_error')
     print(f"Mean cross-validation score: {-scores.mean()}")
-    plot_results(true_labels_for_testing, y_pred,"random forest")
+    plot_results(Y_test, y_pred,"random forest")
 
 
 def run_SVR(X,Y):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
-    testing = X[20:40]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[20:40]
-    X = np.delete(X, list(range(20, 40)), 0)
-    Y = np.delete(Y, list(range(20, 40)), 0)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+
     param_grid = {
-        'C': [1, 10, 50, 100],
-        'epsilon': [0.01, 0.05, 0.1, 0.2],
+        'C': [50, 100,200],
+        'epsilon': [0.01, 0.05, 0.1,0.2],
         'gamma': [0.01, 0.1, 'scale', 'auto'],
-        'kernel': ['rbf','poly','sigmoid'],
+        'kernel': ['rbf'],
     }
 
     svr = SVR()
     grid_search = GridSearchCV(svr, param_grid, scoring='neg_mean_squared_error', cv=5, n_jobs=-1)
-    svr.fit(X, Y)
-    #best_model = grid_search.best_estimator_
+    svr.fit(X_train, Y_train)
+    #best_model = svr.best_estimator_
 
-    y_pred = svr.predict(testing)
+    y_pred = svr.predict(X_test)
     print("predicted: ", y_pred)
-    print("Actual: ", true_labels_for_testing)
-    print("mse: ", mean_squared_error(true_labels_for_testing, y_pred))
-    scores = cross_val_score(svr, X, Y, cv=5, scoring='neg_mean_squared_error')
+    print("Actual: ", Y_test)
+    print("mse: ", mean_squared_error(Y_test, y_pred))
+    scores = cross_val_score(svr, X_train, Y_train, cv=5, scoring='neg_mean_squared_error')
     print(f"Mean cross-validation score: {-scores.mean()}")
     #print("Best params:", grid_search.best_params_)
 
-    plot_results(true_labels_for_testing, y_pred, "SVR (tuned)")
-
-
-def run_LR(X,Y):
-
-    testing = X[10:25]  # ~5 testing data (PROTEINS R7C5-R8C1) AS TESTING DATA
-    true_labels_for_testing = Y[10:25]
-    X = np.delete(X, list(range(10, 25)), 0)
-    Y = np.delete(Y, list(range(10, 25)), 0)
-    lr = make_pipeline(
-        StandardScaler(),
-        PolynomialFeatures(degree=3),
-        PCA(n_components=15),
-        ElasticNet(alpha=0.001, l1_ratio=0.8, max_iter=10000)
-    )
-    lr.fit(X, Y)
-    y_pred = lr.predict(testing)
-    print("predicted: ", np.clip(y_pred,0,1))
-    print("Actual: ", true_labels_for_testing)
-    print("MAE:", mean_absolute_error(true_labels_for_testing, y_pred))
-    print("mse: ", mean_squared_error(true_labels_for_testing, y_pred))
-    plot_results(true_labels_for_testing, np.clip(y_pred,0,1),"lr")
-    scores = cross_val_score(lr, X, Y, cv=5, scoring='neg_mean_squared_error')
-    print(f"Mean cross-validation score: {-scores.mean()}")
+    plot_results(Y_test, y_pred, "SVR (tuned)")
 
