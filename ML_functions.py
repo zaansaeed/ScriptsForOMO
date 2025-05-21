@@ -52,14 +52,17 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
             for file in os.listdir(working_dir):
                 if file.endswith(f"-{feature}.csv"):
                     data = pd.read_csv(file,header=None,index_col=None)
-                    #X.append(pad_square_dataframe_to_array(data,5,0))
-                    print(working_dir, data.shape)
+                    if feature == "BWDihedralNormalized": #remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
+                        data = np.array(data)
+                        data = data[:,:-1]
+
+                        data[:,-1] = np.round(data[:,-1])
+                        print(data.shape,working_dir)
+                        data = pd.DataFrame(data)
+
                     X.append(data.values.tolist())
 
-    X = np.array(X)
-    X[X>1000] = np.nan
-    print(X[0])
-
+    X= np.array(X)
     return X.reshape(len(X),-1)
 
 def create_outputs(main_dir):

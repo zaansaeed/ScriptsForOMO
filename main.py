@@ -44,14 +44,14 @@ print("beginning dihedrals")
 fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 
-X = ML.create_X(main_dir, "BWdihedrals") #ready for input
-#feature: BWdistances or BWdihedrals
+X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+#feature: BWdistances or BWdihedrals or BWDihedralNormalized
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
 
 print(X.shape)
 print(Y.shape)
-
+print(X[0])
 
 
 

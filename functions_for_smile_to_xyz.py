@@ -264,9 +264,8 @@ def addAmides(input_peptide):
     amideGroups = []
     matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
-    matches = matches1 +matches2
+    matches = matches1 + matches2
 
-    #nitrogens = [tpl[0] for tpl in matches]
     n_terminus = find_n_terminus(input_peptide)
 
     bfs_order = bfs_traversal(input_peptide, n_terminus)
@@ -319,51 +318,7 @@ def xyz_to_array(xyz_file):
         coordinates.append([x, y, z])
     return coordinates
 
-def new_boltzmann(values, working_dir,name):
-    energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
-    energy_vals = energies['Energies'].values
 
-    R = 8.314e-3  # kJ/mol·K
-    T = 298  # Kelvin
-
-    weights = np.exp(-energy_vals / (R * T))
-    weights = weights / np.sum(weights)  # Normalize weights
-
-    weighted_sum = np.zeros_like(values[0], dtype=float)
-
-    for i, arr in enumerate(values):
-        weighted_sum += weights[i] * np.array(arr)
-
-    return weighted_sum
-
-def boltzmann(values, working_dir,name):
-
-    boltzmann_results = []
-    energies =pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records")
-    R = 8.314e-3
-    T = 298
-
-    new_array = []
-    for amide_array in range(len(values)):
-        new_array = []
-        for amide_row in range(len(values[0])):
-            new_row = []
-            for amide_col in range(len(values[0][0])):
-                denominator = 0
-                numerator = 0
-                answer = 0
-                for k in range(len(energies)):
-                    e_term = math.exp(
-                        -(energies[k]['Energies']) / (298 * 8.314 * 10 ** -3))
-                    denominator += e_term
-
-                    numerator += e_term * values[k][amide_row][amide_col]
-                    answer = numerator / denominator
-                new_row.append(answer)
-            new_array.append(new_row)
-    boltzmann_results.append(new_array)
-
-    return boltzmann_results
 
 
 
@@ -388,7 +343,6 @@ def boltzmann_weight_energies(name,working_dir, update_matrices):
         os.chdir(working_dir)
         boltzmann_matrix = boltzmann(distances, working_dir,name)
 
-        boltzmann_matrix =boltzmann_matrix[0]
 
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
@@ -526,9 +480,9 @@ def extract_boltzmann_weighted_dihedrals_normalized():
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
-            if os.path.exists(f"{name}-BWdihedrals.csv"):
-                peptide_normalized_dihedrals = []
+            if not os.path.exists(f"{name}-BWdihedrals.csv") or os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
+                peptide_normalized_dihedrals = []
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):
                     if conformation_xyz.endswith('.xyz'): #working within 1 conformer
                         mol = Chem.MolFromSmiles(smiles_string)
@@ -552,7 +506,7 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                             for residue in all_residues:
                                 if asparagine[-1] in residue:
                                     all_residues.remove(residue)
-
+                        ##########################
                         ordered_residues = []
                         for id in nitrogen_order:
                             for residue in all_residues:
@@ -563,33 +517,54 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                         for residue in ordered_residues:
                             conformation_dihedrals.append(calculate_dihedrals(residue,mol))
                         #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
-                        flag = 0
-                        conformation_normalized_dihedrals_and_flag = []
-                        for i in range(len(conformation_dihedrals)):
-                            conformation_normalized_dihedrals_and_flag = []
-                            flag = 0
+                        flag = (1,0)
+                        conformation_normalized_dihedrals = []
+                        for i in range(len(conformation_dihedrals)): #num of residues
+                            residue_normalized_dihedrals_and_flag = []
+                            flag = (1,0)
                             for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
                                 if angle > 1000:
-                                    flag = 1
-                                    conformation_normalized_dihedrals_and_flag.append((0,0))
+                                    flag = (0,0)
+                                    residue_normalized_dihedrals_and_flag.append((0,0))
                                 else:
-                                    conformation_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
-                            conformation_normalized_dihedrals_and_flag.append(flag)
-                        peptide_normalized_dihedrals.append(conformation_normalized_dihedrals_and_flag)
+                                    residue_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
+                            residue_normalized_dihedrals_and_flag.append(flag)
+
+                            conformation_normalized_dihedrals.append(residue_normalized_dihedrals_and_flag)
+
+                    peptide_normalized_dihedrals.append(conformation_normalized_dihedrals)
+
+
 
                 #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
-                #boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
-                #boltzmann_matrix = boltzmann_matrix[0]
-                #print(len(boltzmann_matrix))
-                #df = pd.DataFrame(boltzmann_matrix)
-                #df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
-                #print("dihedral calculation done for " +name )
+                boltzmann_matrix = boltzmann(peptide_normalized_dihedrals, working_dir,name)
+
+                print(boltzmann_matrix.shape)
+                boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
+                df = pd.DataFrame(boltzmann_matrix)
+                df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
+                print("dihedral calculation done for " +name )
                 os.chdir(main_dir)
 
             os.chdir(main_dir)
 
 
 
+def boltzmann(values, working_dir,name):
+    energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
+    energy_vals = energies['Energies'].values
+
+    R = 8.314e-3  # kJ/mol·K
+    T = 298  # Kelvin
+
+    weights = np.exp(-energy_vals / (R * T))
+    weights = weights / np.sum(weights)  # Normalize weights
+
+    weighted_sum = np.zeros_like(values[0], dtype=float)
+    for i, arr in enumerate(values):
+        weighted_sum += weights[i] * np.array(arr)
+
+    return weighted_sum
 
 
 
