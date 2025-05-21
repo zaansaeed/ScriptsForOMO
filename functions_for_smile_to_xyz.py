@@ -321,8 +321,7 @@ def xyz_to_array(xyz_file):
 
 
 def boltzmann(values, working_dir,name):
-    numerator = 0
-    denominator = 0
+
     boltzmann_results = []
     properties_of_each_conformer =pd.read_csv(working_dir+f'/{name}-energies.csv').to_dict(orient="records")
     new_array = []
@@ -331,7 +330,6 @@ def boltzmann(values, working_dir,name):
         for amide_row in range(len(values[0])):
             new_row = []
             for amide_col in range(len(values[0][0])):
-                e_term = 0
                 denominator = 0
                 numerator = 0
                 answer = 0
@@ -501,7 +499,7 @@ def calculate_dihedrals(residue,mol):
 
 
 
-def extract_boltzmann_weighted_dihedral():
+def extract_boltzmann_weighted_dihedrals_normalized():
     os.chdir(main_dir)
     for folder in os.listdir(main_dir):
         if os.path.isdir(folder):
@@ -510,10 +508,10 @@ def extract_boltzmann_weighted_dihedral():
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             if not os.path.exists(f"{name}-BWdihedrals.csv"):
-                peptide_dihedrals = []
+                peptide_normalized_dihedrals = []
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):
-                    if conformation_xyz.endswith('.xyz'):
+                    if conformation_xyz.endswith('.xyz'): #working within 1 conformer
                         mol = Chem.MolFromSmiles(smiles_string)
                         mol = Chem.AddHs(mol)
                         mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
@@ -542,10 +540,24 @@ def extract_boltzmann_weighted_dihedral():
                                 if id in residue:
                                     ordered_residues.append(residue)
                                     all_residues.remove(residue)
-                        conformation_dihedrals = []
+                        conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
                         for residue in ordered_residues:
                             conformation_dihedrals.append(calculate_dihedrals(residue,mol))
-                        peptide_dihedrals.append(conformation_dihedrals)
+                        #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
+                        flag = 0
+                        conformation_normalized_dihedrals_and_flag = []
+                        for i in range(len(conformation_dihedrals)):
+                            conformation_normalized_dihedrals_and_flag = []
+                            if 5000 in conformation_dihedrals[i]:
+                                flag = 1
+                            else:
+                                flag = 0
+                            for angle in conformation_dihedrals[i]: #adds (sin,cos) to array
+                                conformation_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
+
+                        conformation_normalized_dihedrals_and_flag.append(flag)
+
+                        peptide_normalized_dihedrals.append(conformation_normalized_dihedrals_and_flag)
 
                 #boltzmann weight the n many conformation 6x3 matrices
                 boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
