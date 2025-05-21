@@ -507,7 +507,7 @@ def extract_boltzmann_weighted_dihedrals_normalized():
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
-            if not os.path.exists(f"{name}-BWdihedrals.csv"):
+            if os.path.exists(f"{name}-BWdihedrals.csv"):
                 peptide_normalized_dihedrals = []
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):
@@ -548,24 +548,23 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                         conformation_normalized_dihedrals_and_flag = []
                         for i in range(len(conformation_dihedrals)):
                             conformation_normalized_dihedrals_and_flag = []
-                            if 5000 in conformation_dihedrals[i]:
-                                flag = 1
-                            else:
-                                flag = 0
-                            for angle in conformation_dihedrals[i]: #adds (sin,cos) to array
-                                conformation_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
-
-                        conformation_normalized_dihedrals_and_flag.append(flag)
-
+                            flag = 0
+                            for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
+                                if angle > 1000:
+                                    flag = 1
+                                    conformation_normalized_dihedrals_and_flag.append((0,0))
+                                else:
+                                    conformation_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
+                            conformation_normalized_dihedrals_and_flag.append(flag)
                         peptide_normalized_dihedrals.append(conformation_normalized_dihedrals_and_flag)
 
-                #boltzmann weight the n many conformation 6x3 matrices
-                boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
-                boltzmann_matrix = boltzmann_matrix[0]
-                print(len(boltzmann_matrix))
-                df = pd.DataFrame(boltzmann_matrix)
-                df.to_csv(working_dir+f'/{name}-BWdihedrals.csv', index=False, header=False)
-                print("dihedral calculation done for " +name )
+                #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
+                #boltzmann_matrix = boltzmann(peptide_dihedrals, working_dir,name)
+                #boltzmann_matrix = boltzmann_matrix[0]
+                #print(len(boltzmann_matrix))
+                #df = pd.DataFrame(boltzmann_matrix)
+                #df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
+                #print("dihedral calculation done for " +name )
                 os.chdir(main_dir)
 
             os.chdir(main_dir)

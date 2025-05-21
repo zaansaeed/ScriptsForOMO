@@ -41,7 +41,7 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         fs.extract_energies_to_csv(name,working_dir)
         fs.boltzmann_weight_energies(name,working_dir,update_matrices)
 print("beginning dihedrals")
-fs.extract_boltzmann_weighted_dihedral()
+fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 
 X = ML.create_X(main_dir, "BWdihedrals") #ready for input
