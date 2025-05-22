@@ -280,7 +280,6 @@ def addAmides(input_peptide):
                     amideGroups.append(AmideGroup(match, i, input_peptide))
                     used_IDS.append(amide_IDS)
                     i += 1
-    print(i)
 
     return amideGroups
 
@@ -476,11 +475,10 @@ def extract_boltzmann_weighted_dihedrals_normalized():
     os.chdir(main_dir)
     for folder in os.listdir(main_dir):
         if os.path.isdir(folder):
-            print(folder)
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
-            if not os.path.exists(f"{name}-BWdihedrals.csv") or os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+            if not os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 peptide_normalized_dihedrals = []
                 for conformation_xyz in os.listdir(f"{name}_Conformations"):
@@ -539,7 +537,6 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                 #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
                 boltzmann_matrix = boltzmann(peptide_normalized_dihedrals, working_dir,name)
 
-                print(boltzmann_matrix.shape)
                 boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
                 df = pd.DataFrame(boltzmann_matrix)
                 df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)

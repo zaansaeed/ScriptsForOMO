@@ -1,9 +1,7 @@
 import os
 import functions_for_smile_to_xyz as fs
 import ML_functions as ML
-
-
-
+from ScriptsForOMO.ML_functions import create_Y
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
@@ -40,21 +38,44 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         fs.xyz_to_individual_xyz(name,working_dir)
         fs.extract_energies_to_csv(name,working_dir)
         fs.boltzmann_weight_energies(name,working_dir,update_matrices)
-print("beginning dihedrals")
 fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 
-X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+
+
+
+
+
+
 #feature: BWdistances or BWdihedrals or BWDihedralNormalized
+
+X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+pca = PCA(n_components=10)
+X_pca = pca.fit_transform(X_scaled)
+print("Explained variance ratio per component:")
+print(pca.explained_variance_ratio_)
+
+print("Total variance explained by  components:", sum(pca.explained_variance_ratio_))
+
+
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
+#Y = create_Y(Y,.75 )
 
-
+import pandas as pd
 print(X.shape)
-print(Y.shape)
-print(X[0])
+
+#print("Count of 0s:", Y.count(0))
+#print("Count of 1s:", Y.count(1))
 
 
+#ML.run_RFC(X,Y)
+#ML.run_SVM(X,Y)
 
 #ML.run_RFR(X,Y)
-#ML.run_SVR(X,Y)
-#ML.run_LR(X,Y)
+ML.run_SVR(X,Y)

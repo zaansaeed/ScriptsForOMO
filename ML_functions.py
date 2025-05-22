@@ -1,20 +1,19 @@
 import os
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
-from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor, HistGradientBoostingRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score, KFold
-from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, mean_absolute_error
-from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV ,cross_val_score, KFold
+from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, \
+     f1_score,mean_absolute_error, r2_score, root_mean_squared_error
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.svm import SVR
-from xgboost import XGBRegressor
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
-from sklearn.gaussian_process.kernels import RationalQuadratic
+from sklearn.svm import SVR, SVC
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+
 
 def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
@@ -85,42 +84,99 @@ def six_over_target_percents(original_Y):
 def create_Y(outputs,cutoff):
     Y =[]
     for item in outputs:
-        if item > cutoff:
+        if item >=cutoff:
             Y.append(1)
         else:
             Y.append(0)
     return Y
 
+
+
+
 def run_RFC(X,Y):
+
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+
+    pipeline = Pipeline([
+
+        ('pca', PCA(n_components=10)),
+        ('rf', RandomForestClassifier(random_state=42))
+    ])
+
+    pipeline.fit(X_train, y_train)
+
+    # Predict on test data
+    y_pred = pipeline.predict(X_test)
+
+
+
+    # Evaluate
+    print("Test accuracy:", accuracy_score(y_test, y_pred))
+    accuracy = accuracy_score(y_test, y_pred)
+    print("Accuracy: ", accuracy)
+    print("F1: ", f1_score(y_test, y_pred, average='macro'))
+    print(classification_report(y_test, y_pred))
+    plot_results(y_test, y_pred, pipeline)
+
+    from sklearn.dummy import DummyClassifier
+
+    dummy = DummyClassifier(strategy="most_frequent")
+    dummy.fit(X_train, y_train)
+    print("Baseline accuracy:", dummy.score(X_test, y_test))
+    print("Baseline f1:",f1_score(y_test, dummy.predict(X_test), average='macro'))
+
+def run_SVM(X,Y):
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+    param_grid = {
+        'C': [1],
+        'kernel': ['rbf'],
+        'gamma': ['scale', 'auto'],
+        'class_weight': ['balanced']
+    }
+
+    # Initialize SVM
+    svm = SVC(probability=True, random_state=42)
+
+    # Set up GridSearchCV
+    grid_search = GridSearchCV(
+        estimator=svm,
+        param_grid=param_grid,
+        scoring='f1',
+        cv=5,
+        n_jobs=-1,
+        verbose=1
+    )
+    grid_search.fit(X_train, Y_train)
+    y_pred = grid_search.predict(X_test)
+
+
+
+    accuracy = accuracy_score(Y_test, y_pred)
+    print("Accuracy: ", accuracy)
+    print("F1: ", f1_score(Y_test, y_pred))
+    print(classification_report(Y_test, y_pred))
+    print(grid_search.best_params_)
+    plot_results(Y_test, y_pred, grid_search)
+
+    from sklearn.dummy import DummyClassifier
+
+    dummy = DummyClassifier(strategy="most_frequent")
+    dummy.fit(X_train, Y_train)
+    print("Baseline accuracy:", dummy.score(X_test, Y_test))
+    print("Baseline f1:", f1_score(Y_test, dummy.predict(X_test), average='macro'))
+
+
+def run_RFR(X,Y):
 
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.4, random_state=42)
 
     param_grid = {
-        'n_estimators': [1, 100, 150, 200, 400],  # Number of trees in the forest
-        'max_depth': [10, 30, 40, None],  # Maximum depth of each tree
-        'min_samples_split': [2, 5, 10],  # Minimum number of samples required to split an internal node
-        'min_samples_leaf': [1, 2, 3],  # Minimum number of samples required to be at a leaf node
-        'max_features': ['sqrt', 'log2'],  # Number of features to consider for each split
-        'bootstrap': [True, False],  # Whether bootstrap sampling is used
-    }
-    model = RandomForestClassifier(random_state=42)
-    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=4, verbose=1, scoring='accuracy')  # f1
-    grid_search.fit(X_train, Y_train)
-
-    y_pred = grid_search.predict(X_test)
-    accuracy = accuracy_score(Y_test, y_pred)
-    print("Accuracy: ", accuracy)
-    print(classification_report(Y_test, y_pred))
-
-def run_RFR(X,Y):
-
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
-
-    param_grid = {
-        'n_estimators': [ 200,600],  # Fewer trees to keep it lightweight
-        'max_depth': [20, None],  # Shallow trees to prevent overfitting
+        'n_estimators': [150,1000],  # Fewer trees to keep it lightweight
+        'max_depth': [10,40, None],  # Shallow trees to prevent overfitting
         'min_samples_split': [2, 10],  # Try larger splits to regularize
-        'min_samples_leaf': [2, 4],  # Larger leaves reduce model complexity
+        'min_samples_leaf': [2, 4,5],  # Larger leaves reduce model complexity
         'max_features': ['sqrt'],  # Limit number of features at each split
         'bootstrap': [True]  # Usually better for small data
     }
@@ -128,50 +184,63 @@ def run_RFR(X,Y):
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
-        scoring='neg_mean_absolute_error',
-        cv=8,
+        scoring='neg_mean_squared_error',
+        cv=6,
         n_jobs=-1,
         verbose=1
     )
 
 
-    rf.fit(X_train,Y_train)
-    y_pred = rf.predict(X_test)
+    grid_search.fit(X_train,Y_train)
+    y_pred = grid_search.predict(X_test)
     mse = mean_squared_error(Y_test, y_pred)
-    print("MSE: ", mse)
-    print("MAE,", mean_absolute_error(Y_test, y_pred))
+
     print("Results on testing data:,", y_pred)
     print("True percents", Y_test)
-    #print("best params:", grid_search.best_params_)
-    scores = cross_val_score(rf, X_train, Y_train, cv=5, scoring='neg_mean_squared_error')
+    print("best params:", grid_search.best_params_)
+    scores = cross_val_score(grid_search, X_train, Y_train, cv=6, scoring='neg_mean_squared_error')
     print(f"Mean cross-validation score: {-scores.mean()}")
+    print("MSE: ", mse)
+    print("MAE,", mean_absolute_error(Y_test, y_pred))
     plot_results(Y_test, y_pred,"random forest")
 
+    baseline = np.full_like(Y_test, np.mean(Y_train))
+    baseline_mae = mean_absolute_error(Y_test, baseline)
+    print("Baseline MAE (predicting mean):", baseline_mae)
 
 def run_SVR(X,Y):
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('pca', PCA(n_components=15)),  # Let GridSearch decide n_components
+        ('svr', SVR())
+    ])
 
     param_grid = {
-        'C': [50, 100,200],
-        'epsilon': [0.01, 0.05, 0.1,0.2],
-        'gamma': [0.01, 0.1, 'scale', 'auto'],
-        'kernel': ['rbf'],
+        'svr__kernel': ['rbf'],
+        'svr__C': [1000],
+        'svr__gamma': [ .001],
     }
 
-    svr = SVR()
-    grid_search = GridSearchCV(svr, param_grid, scoring='neg_mean_squared_error', cv=5, n_jobs=-1)
-    svr.fit(X_train, Y_train)
-    #best_model = svr.best_estimator_
+    grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
+    grid_search.fit(X_train, Y_train)
+    best_model = grid_search.best_estimator_
 
-    y_pred = svr.predict(X_test)
-    print("predicted: ", y_pred)
-    print("Actual: ", Y_test)
-    print("mse: ", mean_squared_error(Y_test, y_pred))
-    scores = cross_val_score(svr, X_train, Y_train, cv=5, scoring='neg_mean_squared_error')
+    y_pred = grid_search.predict(X_test)
+    y_pred = np.clip(y_pred, 0, 1)
+
+
+    scores = cross_val_score(grid_search, X_train, Y_train, cv=5, scoring='r2')
     print(f"Mean cross-validation score: {-scores.mean()}")
-    #print("Best params:", grid_search.best_params_)
+    print("Best params:", grid_search.best_params_)
+    print("mse: ", mean_squared_error(Y_test, y_pred))
+    print("MAE,", mean_absolute_error(Y_test, y_pred))
+
+    print("R2: ", r2_score(Y_test, y_pred))
+    print("RMSE:", np.sqrt(mean_squared_error(Y_test, y_pred)))
 
     plot_results(Y_test, y_pred, "SVR (tuned)")
 
