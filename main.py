@@ -1,12 +1,11 @@
 import os
 import functions_for_smile_to_xyz as fs
 import ML_functions as ML
-from ScriptsForOMO.ML_functions import create_Y
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
 #/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 
@@ -49,8 +48,10 @@ fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 #feature: BWdistances or BWdihedrals or BWDihedralNormalized
 
-X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
-
+X = ML.create_X(main_dir, "BWdistances") #ready for input
+import pandas as pd
+df = pd.DataFrame(X)
+#df.to_csv("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides/X1.csv", header=False, index=False)
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 

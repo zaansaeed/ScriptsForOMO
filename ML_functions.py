@@ -191,14 +191,14 @@ def run_RFR(X,Y):
     )
 
 
-    grid_search.fit(X_train,Y_train)
-    y_pred = grid_search.predict(X_test)
+    rf.fit(X_train,Y_train)
+    y_pred = rf.predict(X_test)
     mse = mean_squared_error(Y_test, y_pred)
 
     print("Results on testing data:,", y_pred)
     print("True percents", Y_test)
-    print("best params:", grid_search.best_params_)
-    scores = cross_val_score(grid_search, X_train, Y_train, cv=6, scoring='neg_mean_squared_error')
+   # print("best params:", grid_search.best_params_)
+    scores = cross_val_score(rf, X_train, Y_train, cv=6, scoring='neg_mean_squared_error')
     print(f"Mean cross-validation score: {-scores.mean()}")
     print("MSE: ", mse)
     print("MAE,", mean_absolute_error(Y_test, y_pred))
@@ -213,9 +213,9 @@ def run_SVR(X,Y):
 
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
 
-    pipeline = Pipeline([
+    ''' pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        ('pca', PCA(n_components=15)),  # Let GridSearch decide n_components
+        #('pca', PCA(n_components=15)),  # Let GridSearch decide n_components
         ('svr', SVR())
     ])
 
@@ -223,19 +223,22 @@ def run_SVR(X,Y):
         'svr__kernel': ['rbf'],
         'svr__C': [1000],
         'svr__gamma': [ .001],
-    }
+    }'''
 
-    grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
-    grid_search.fit(X_train, Y_train)
-    best_model = grid_search.best_estimator_
 
-    y_pred = grid_search.predict(X_test)
+
+    svr = SVR()
+    #grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
+    svr.fit(X_train, Y_train)
+    #best_model = grid_search.best_estimator_
+
+    y_pred = svr.predict(X_test)
     y_pred = np.clip(y_pred, 0, 1)
 
 
-    scores = cross_val_score(grid_search, X_train, Y_train, cv=5, scoring='r2')
+    scores = cross_val_score(svr, X_train, Y_train, cv=5, scoring='r2')
     print(f"Mean cross-validation score: {-scores.mean()}")
-    print("Best params:", grid_search.best_params_)
+    #print("Best params:", grid_search.best_params_)
     print("mse: ", mean_squared_error(Y_test, y_pred))
     print("MAE,", mean_absolute_error(Y_test, y_pred))
 

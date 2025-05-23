@@ -13,7 +13,7 @@ import numpy as np
 
 
 
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
 
 def split_xyz(temp_working_dir,input_file,name):
     with open(input_file, "r") as f:
