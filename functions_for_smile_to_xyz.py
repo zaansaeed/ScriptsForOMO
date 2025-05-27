@@ -253,7 +253,7 @@ def find_n_terminus(input_peptide):
     n_terminus = None
     for nitrogen in nitrogens:
         count = 0
-        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
+        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors(): #lowk inefficient, fix
             if neighbor.GetSymbol() == 'H':
                 count += 1
         if count == 2:

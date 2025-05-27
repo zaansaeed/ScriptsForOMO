@@ -50,6 +50,7 @@ fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 
 
+
 X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
 #import pandas as pd
 #df = pd.DataFrame(X)
@@ -57,6 +58,15 @@ X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
 
 
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
+
+X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+
+Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
+#Y = create_Y(Y,.75 )
+
+
+#print("Count of 0s:", Y.count(0))
+#print("Count of 1s:", Y.count(1))
 
 #X = X.tolist()
 #Y = Y.tolist()
