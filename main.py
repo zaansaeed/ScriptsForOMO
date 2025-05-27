@@ -1,6 +1,11 @@
 import os
+
+from sklearn.preprocessing import StandardScaler
+
 import functions_for_smile_to_xyz as fs
 import ML_functions as ML
+from natsort import natsorted
+import numpy as np
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
@@ -51,33 +56,31 @@ fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 
 
-X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
-#import pandas as pd
-#df = pd.DataFrame(X)
-#df.to_csv("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides/X1.csv", header=False, index=False)
+X_dihedrals = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+X_distances = ML.create_X(main_dir, "BWdistances")
+scalar = StandardScaler()
 
+#for i in range(len(X_distances)):
+#    X_distances[i] = scalar.fit_transform(X_distances[i])
+X_dihedrals = X_dihedrals.reshape(len(X_dihedrals), -1)
+X_distances = X_distances.reshape(len(X_distances), -1)
+
+
+X_combined = np.hstack((X_distances,X_dihedrals))
+
+print(X_combined.shape)
+print(X_combined[0])
 
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 
-X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
 
-Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
-#Y = create_Y(Y,.75 )
+#Y = ML.create_Y(Y,.75 )
 
 
-#print("Count of 0s:", Y.count(0))
-#print("Count of 1s:", Y.count(1))
-
-#X = X.tolist()
-#Y = Y.tolist()
-#for i in reversed(range(len(X))):
- #   if Y[i] <= .4:
-#        del X[i]
-#        del Y[i]
-#print(len(X))
 
 #ML.run_RFC(X,Y)
 #ML.run_SVM(X,Y)
 
-ML.run_RFR(X,Y)
-#ML.run_SVR(X,Y)
+ML.run_RFR(X_combined,Y)
+print(X_combined[0][32])
+#ML.run_SVR(X_combined,Y)

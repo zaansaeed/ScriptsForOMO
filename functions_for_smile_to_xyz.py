@@ -10,6 +10,7 @@ import pandas as pd
 from collections import deque
 import math
 import numpy as np
+from natsort import natsorted
 
 
 
@@ -204,7 +205,6 @@ def bfs_traversal(mol, startingID):
     for id in bfs_order:
         if mol.GetAtomWithIdx(id).GetSymbol() == 'N':
             bfs_nitrogens.append(id)
-
     return bfs_nitrogens
 
 class AmideGroup:
@@ -245,23 +245,12 @@ class AmideGroup:
         return self.group_num
 
 def find_n_terminus(input_peptide):
-    nitrogens = []
-    for atom in input_peptide.GetAtoms():
-        if atom.GetSymbol() == 'N':
-            nitrogens.append(atom.GetIdx())
-
-    n_terminus = None
-    for nitrogen in nitrogens:
-        count = 0
-        for neighbor in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors(): #lowk inefficient, fix
-            if neighbor.GetSymbol() == 'H':
-                count += 1
-        if count == 2:
-            if 'C' in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
-                n_terminus = nitrogen
-            else:
-                count = 0
-    return n_terminus
+    n_terminus_residue_normal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)'))
+    n_terminus_residue_abnormal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)'))
+    if n_terminus_residue_normal:
+        return n_terminus_residue_normal[0][0]
+    else:
+        return n_terminus_residue_abnormal[0][0]
 
 def addAmides(input_peptide):
     amideGroups = []
@@ -338,7 +327,7 @@ def boltzmann_weight_energies(name,working_dir, update_matrices):
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
         distances = []
-        for conformation_xyz in os.listdir(temp_working_dir):
+        for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
             if conformation_xyz.endswith('.xyz'):
                 atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
                 distances.append(getAmideDistances(amideGroups,atom_coordinates))
@@ -476,44 +465,48 @@ def calculate_dihedrals(residue,mol):
 
 def extract_boltzmann_weighted_dihedrals_normalized():
     os.chdir(main_dir)
-    for folder in os.listdir(main_dir):
+    for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder):
             os.chdir(folder)
             working_dir = os.getcwd()
             name = folder.split("_")[1]
+            print(name)
             if not os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 peptide_normalized_dihedrals = []
-                for conformation_xyz in os.listdir(f"{name}_Conformations"):
+                mol = Chem.MolFromSmiles(smiles_string)
+                mol = Chem.AddHs(mol)
+                mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
+                n_terminus = find_n_terminus(mol)
+                nitrogen_order = bfs_traversal(mol, n_terminus)
+                n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
+                n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
+                normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
+                abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
+                all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
+                all_residues = list(all_residues)
+                ############## get rid of asparagine
+                query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
+                query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
+                query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
+                query4 = Chem.MolFromSmarts('[NH2]CC[C](=O)[NH2]')
+                asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(
+                    query2) + mol.GetSubstructMatches(query3) + mol.GetSubstructMatches(query4)
+                for asparagine in asparagines:
+                    for residue in all_residues:
+                        if asparagine[-1] in residue:
+                            all_residues.remove(residue)
+                ##########################
+                ordered_residues = []
+                for id in nitrogen_order:
+                    for residue in all_residues:
+                        if id in residue:
+                            ordered_residues.append(residue)
+                            all_residues.remove(residue)
+
+                for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
                     if conformation_xyz.endswith('.xyz'): #working within 1 conformer
-                        mol = Chem.MolFromSmiles(smiles_string)
-                        mol = Chem.AddHs(mol)
-                        mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                        n_terminus = find_n_terminus(mol)
-                        nitrogen_order = bfs_traversal(mol, n_terminus)
-                        n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
-                        n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
-                        normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
-                        abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
-                        all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
-                        all_residues = list(all_residues)
-                        ############## get rid of asparagine
-                        query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
-                        query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
-                        query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
-                        query4 = Chem.MolFromSmarts('[NH2]CC[C](=O)[NH2]')
-                        asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(query2) + mol.GetSubstructMatches(query3) + mol.GetSubstructMatches(query4)
-                        for asparagine in asparagines:
-                            for residue in all_residues:
-                                if asparagine[-1] in residue:
-                                    all_residues.remove(residue)
-                        ##########################
-                        ordered_residues = []
-                        for id in nitrogen_order:
-                            for residue in all_residues:
-                                if id in residue:
-                                    ordered_residues.append(residue)
-                                    all_residues.remove(residue)
+
                         conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
                         for residue in ordered_residues:
                             conformation_dihedrals.append(calculate_dihedrals(residue,mol))
@@ -540,7 +533,9 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                 #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
                 boltzmann_matrix = boltzmann(peptide_normalized_dihedrals, working_dir,name)
 
+
                 boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
+                print(boltzmann_matrix)
                 df = pd.DataFrame(boltzmann_matrix)
                 df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
                 print("dihedral calculation done for " +name )
@@ -553,6 +548,7 @@ def extract_boltzmann_weighted_dihedrals_normalized():
 def boltzmann(values, working_dir,name):
     energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
     energy_vals = energies['Energies'].values
+    print(energy_vals[0])
 
     R = 8.314e-3  # kJ/mol·K
     T = 298  # Kelvin

@@ -1,4 +1,6 @@
 import os
+from random import random
+
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
@@ -70,7 +72,8 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                     X.append(data.values.tolist())
 
     X= np.array(X)
-    return X.reshape(len(X),-1)
+    #return X.reshape(len(X),-1)
+    return X
 
 def create_outputs(main_dir):
     Y =[]
@@ -103,7 +106,7 @@ def create_Y(outputs,cutoff):
 
 def run_RFC(X,Y):
 
-    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     pipeline = Pipeline([
 
@@ -168,12 +171,6 @@ def run_SVM(X,Y):
     print(grid_search.best_params_)
     plot_results(Y_test, y_pred, grid_search)
 
-    from sklearn.dummy import DummyClassifier
-
-    dummy = DummyClassifier(strategy="most_frequent")
-    dummy.fit(X_train, Y_train)
-    print("Baseline accuracy:", dummy.score(X_test, Y_test))
-    print("Baseline f1:", f1_score(Y_test, dummy.predict(X_test), average='macro'))
 
 
 def run_RFR(X,Y):
@@ -188,9 +185,7 @@ def run_RFR(X,Y):
         'max_features': ['sqrt'],  # Limit number of features at each split
         'bootstrap': [True]  # Usually better for small data
     }
-    rf = RandomForestRegressor(n_estimators=100, criterion='squared_error', max_depth=None, min_samples_split=2,
-                               min_samples_leaf=2,
-                               max_features=1.0,random_state=42)
+    rf = RandomForestRegressor(random_state=42)
 
 
 
@@ -216,26 +211,40 @@ def run_RFR(X,Y):
     print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
     plot_results(Y_test, y_pred, rf)
 
+    top_n= 15
+    importances = rf.feature_importances_
+    indices = np.argsort(importances)[::-1][:top_n]
+
+    # Plot
+    Xf = pd.DataFrame(X, columns=[f"Feature {i}" for i in range(X.shape[1])])
+    plt.figure(figsize=(10, 6))
+    plt.title("Feature Importances - Random Forest Regressor")
+    plt.bar(range(top_n), importances[indices], align="center")
+    plt.xticks(range(top_n), Xf.columns[indices], rotation=45)
+    plt.ylabel("Importance")
+    plt.tight_layout()
+    plt.show()
+
 def run_SVR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1,random_state=42)
 
-    ''' pipeline = Pipeline([
-        ('scaler', StandardScaler()),
+    pipeline = Pipeline([
+        #('scaler', StandardScaler()),
         #('pca', PCA(n_components=15)),  # Let GridSearch decide n_components
         ('svr', SVR())
     ])
 
     param_grid = {
         'svr__kernel': ['rbf'],
-        'svr__C': [1000],
-        'svr__gamma': [ .001],
-    }'''
+        'svr__C': [500],
+        'svr__epsilon': [ .2],
+    }
 
 
 
-    svr = SVR(kernel='rbf',C=10,epsilon=0.07)
-    #grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
+    svr = SVR(C=100,epsilon=.01,kernel='rbf')
+    grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
     svr.fit(X_train, Y_train)
     #best_model = grid_search.best_estimator_
 
