@@ -13,7 +13,7 @@ import numpy as np
 
 
 
-main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 
 def split_xyz(temp_working_dir,input_file,name):
     with open(input_file, "r") as f:
@@ -257,7 +257,10 @@ def find_n_terminus(input_peptide):
             if neighbor.GetSymbol() == 'H':
                 count += 1
         if count == 2:
-            n_terminus = nitrogen
+            if 'C' in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
+                n_terminus = nitrogen
+            else:
+                count = 0
     return n_terminus
 
 def addAmides(input_peptide):

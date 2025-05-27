@@ -5,7 +5,7 @@ import ML_functions as ML
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
 # Define the working directory (where results will be stored)
 #/Users/zaan/zasaeed@g.hmc.edu - Google Drive/My Drive/OMO Lab - Peptide Cyclization - Zaan Saeed/Data/NewPeptideLibrary
-main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 
@@ -48,35 +48,26 @@ fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 #feature: BWdistances or BWdihedrals or BWDihedralNormalized
 
-X = ML.create_X(main_dir, "BWdistances") #ready for input
-import pandas as pd
-df = pd.DataFrame(X)
+
+
+X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
+#import pandas as pd
+#df = pd.DataFrame(X)
 #df.to_csv("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides/X1.csv", header=False, index=False)
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-pca = PCA(n_components=10)
-X_pca = pca.fit_transform(X_scaled)
-print("Explained variance ratio per component:")
-print(pca.explained_variance_ratio_)
-
-print("Total variance explained by  components:", sum(pca.explained_variance_ratio_))
 
 
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
-#Y = create_Y(Y,.75 )
 
-import pandas as pd
-print(X.shape)
-
-#print("Count of 0s:", Y.count(0))
-#print("Count of 1s:", Y.count(1))
-
+#X = X.tolist()
+#Y = Y.tolist()
+#for i in reversed(range(len(X))):
+ #   if Y[i] <= .4:
+#        del X[i]
+#        del Y[i]
+#print(len(X))
 
 #ML.run_RFC(X,Y)
 #ML.run_SVM(X,Y)
 
-#ML.run_RFR(X,Y)
-ML.run_SVR(X,Y)
+ML.run_RFR(X,Y)
+#ML.run_SVR(X,Y)

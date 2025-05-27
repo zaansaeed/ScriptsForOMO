@@ -22,9 +22,17 @@ def calc_metrics(Y_test, y_pred):
     print("Results on testing data:,", y_pred)
     print("True percents", Y_test)
 
-def plot_results(true_labels_for_testing,y_pred,model):
-    plt.plot(true_labels_for_testing, label="Actual", marker='o')
-    plt.plot(y_pred, label="Predicted", marker='x')
+
+def plot_results(true_labels_for_testing, y_pred, model):
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(true_labels_for_testing, 'o', label="Actual", markersize=6)
+    plt.plot(y_pred, 'x', label="Predicted", markersize=6)
+
+
+    for i, (true_val, pred_val) in enumerate(zip(true_labels_for_testing, y_pred)):
+        plt.plot([i, i], [true_val, pred_val], 'k--', alpha=0.6)  # Vertical dashed line
+
     plt.title(f"{model} - Peptides")
     plt.xlabel("Peptide Index")
     plt.ylabel("Target Value")
@@ -170,7 +178,7 @@ def run_SVM(X,Y):
 
 def run_RFR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.4, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     param_grid = {
         'n_estimators': [150,1000],  # Fewer trees to keep it lightweight
@@ -180,12 +188,17 @@ def run_RFR(X,Y):
         'max_features': ['sqrt'],  # Limit number of features at each split
         'bootstrap': [True]  # Usually better for small data
     }
-    rf = RandomForestRegressor(random_state=42)
+    rf = RandomForestRegressor(n_estimators=100, criterion='squared_error', max_depth=None, min_samples_split=2,
+                               min_samples_leaf=2,
+                               max_features=1.0,random_state=42)
+
+
+
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
         scoring='neg_mean_squared_error',
-        cv=6,
+        cv=5,
         n_jobs=-1,
         verbose=1
     )
@@ -193,25 +206,19 @@ def run_RFR(X,Y):
 
     rf.fit(X_train,Y_train)
     y_pred = rf.predict(X_test)
-    mse = mean_squared_error(Y_test, y_pred)
 
-    print("Results on testing data:,", y_pred)
-    print("True percents", Y_test)
-   # print("best params:", grid_search.best_params_)
-    scores = cross_val_score(rf, X_train, Y_train, cv=6, scoring='neg_mean_squared_error')
-    print(f"Mean cross-validation score: {-scores.mean()}")
-    print("MSE: ", mse)
-    print("MAE,", mean_absolute_error(Y_test, y_pred))
-    plot_results(Y_test, y_pred,"random forest")
-
-    baseline = np.full_like(Y_test, np.mean(Y_train))
-    baseline_mae = mean_absolute_error(Y_test, baseline)
-    print("Baseline MAE (predicting mean):", baseline_mae)
+    scores = cross_val_score(rf, X_train, Y_train, cv=5, scoring='r2')
+    print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
+    print("R2: ", r2_score(Y_test, y_pred))
+    # print("Best params:", grid_search.best_params_)
+    print("Mean Squared Error: ", mean_squared_error(Y_test, y_pred))
+    print("Root Mean Squared Error:", np.sqrt(mean_squared_error(Y_test, y_pred)))
+    print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
+    plot_results(Y_test, y_pred, rf)
 
 def run_SVR(X,Y):
 
-
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     ''' pipeline = Pipeline([
         ('scaler', StandardScaler()),
@@ -227,7 +234,7 @@ def run_SVR(X,Y):
 
 
 
-    svr = SVR()
+    svr = SVR(kernel='rbf',C=10,epsilon=0.07)
     #grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
     svr.fit(X_train, Y_train)
     #best_model = grid_search.best_estimator_
@@ -237,13 +244,13 @@ def run_SVR(X,Y):
 
 
     scores = cross_val_score(svr, X_train, Y_train, cv=5, scoring='r2')
-    print(f"Mean cross-validation score: {-scores.mean()}")
-    #print("Best params:", grid_search.best_params_)
-    print("mse: ", mean_squared_error(Y_test, y_pred))
-    print("MAE,", mean_absolute_error(Y_test, y_pred))
-
+    print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
     print("R2: ", r2_score(Y_test, y_pred))
-    print("RMSE:", np.sqrt(mean_squared_error(Y_test, y_pred)))
+    #print("Best params:", grid_search.best_params_)
+    print("Mean Squared Error: ", mean_squared_error(Y_test, y_pred))
+    print("Root Mean Squared Error:", np.sqrt(mean_squared_error(Y_test, y_pred)))
+    print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
 
-    plot_results(Y_test, y_pred, "SVR (tuned)")
+
+    plot_results(Y_test, y_pred, svr)
 
