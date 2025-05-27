@@ -257,7 +257,10 @@ def find_n_terminus(input_peptide):
             if neighbor.GetSymbol() == 'H':
                 count += 1
         if count == 2:
-            n_terminus = nitrogen
+            if 'C' in input_peptide.GetAtomWithIdx(nitrogen).GetNeighbors():
+                n_terminus = nitrogen
+            else:
+                count = 0
     return n_terminus
 
 def addAmides(input_peptide):
