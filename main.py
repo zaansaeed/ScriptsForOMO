@@ -48,28 +48,14 @@ fs.extract_boltzmann_weighted_dihedrals_normalized()
 
 #feature: BWdistances or BWdihedrals or BWDihedralNormalized
 
-X = ML.create_X(main_dir, "BWdistances") #ready for input
+X = ML.create_X(main_dir, "BWDihedralNormalized") #ready for input
 import pandas as pd
 df = pd.DataFrame(X)
 #df.to_csv("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides/X1.csv", header=False, index=False)
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-pca = PCA(n_components=10)
-X_pca = pca.fit_transform(X_scaled)
-print("Explained variance ratio per component:")
-print(pca.explained_variance_ratio_)
-
-print("Total variance explained by  components:", sum(pca.explained_variance_ratio_))
-
 
 Y = ML.six_over_target_percents(ML.create_outputs(main_dir))
 #Y = create_Y(Y,.75 )
 
-import pandas as pd
-print(X.shape)
 
 #print("Count of 0s:", Y.count(0))
 #print("Count of 1s:", Y.count(1))
@@ -78,5 +64,5 @@ print(X.shape)
 #ML.run_RFC(X,Y)
 #ML.run_SVM(X,Y)
 
-#ML.run_RFR(X,Y)
-ML.run_SVR(X,Y)
+ML.run_RFR(X,Y)
+#ML.run_SVR(X,Y)

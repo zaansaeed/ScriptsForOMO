@@ -56,7 +56,6 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                         data = data[:,:-1]
 
                         data[:,-1] = np.round(data[:,-1])
-                        print(data.shape,working_dir)
                         data = pd.DataFrame(data)
 
                     X.append(data.values.tolist())
@@ -170,7 +169,7 @@ def run_SVM(X,Y):
 
 def run_RFR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.4, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     param_grid = {
         'n_estimators': [150,1000],  # Fewer trees to keep it lightweight
@@ -204,9 +203,6 @@ def run_RFR(X,Y):
     print("MAE,", mean_absolute_error(Y_test, y_pred))
     plot_results(Y_test, y_pred,"random forest")
 
-    baseline = np.full_like(Y_test, np.mean(Y_train))
-    baseline_mae = mean_absolute_error(Y_test, baseline)
-    print("Baseline MAE (predicting mean):", baseline_mae)
 
 def run_SVR(X,Y):
 
