@@ -16,7 +16,6 @@ def compute_global_descriptors(mol):
     desc = calc(mol)
     desc_dict = desc.asdict()
     clean_desc = {k: v for k,v in desc_dict.items() if isinstance(v,numbers.Number)}
-    print(len(clean_desc))
     return list(clean_desc.values())
 
 def load_xyz_coords(mol, xyz_path):
@@ -58,7 +57,6 @@ if os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
                     print(conformation_xyz)
                     mol.RemoveAllConformers()
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                    compute_global_descriptors(mol)
                     peptide_descriptors.append(compute_global_descriptors(mol))
             peptide_boltzmann= boltzmann(peptide_descriptors,working_dir,name)
             print(peptide_boltzmann)

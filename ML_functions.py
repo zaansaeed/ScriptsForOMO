@@ -163,8 +163,8 @@ def run_SVM(X,Y):
         n_jobs=-1,
         verbose=1
     )
-    grid_search.fit(X_train, Y_train)
-    y_pred = grid_search.predict(X_test)
+    svm.fit(X_train, Y_train)
+    y_pred = svm.predict(X_test)
 
 
 
@@ -172,7 +172,9 @@ def run_SVM(X,Y):
     print("Accuracy: ", accuracy)
     print("F1: ", f1_score(Y_test, y_pred))
     print(classification_report(Y_test, y_pred))
-    print(grid_search.best_params_)
+    #print(grid_search.best_params_)
+    print(cross_val_score(svm, X, Y, cv=5, scoring='f1_macro').mean())
+
     plot_results(Y_test, y_pred, grid_search)
 
 

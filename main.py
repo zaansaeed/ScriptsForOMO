@@ -83,30 +83,30 @@ X_distances = X_distances.reshape(len(X_distances), -1)
 
 X_combined = np.hstack((X_distances,X_dihedrals))
 
-X_distances = [X for i, X in enumerate(X_distances) if i not in indices_to_remove]
+X_dihedrals = [X for i, X in enumerate(X_dihedrals) if i not in indices_to_remove]
 Y = [Y for i, Y in enumerate(Y) if i not in indices_to_remove]
 
-for i in reversed(range(len(X_distances))):
-    if Y[i]==0 or Y[i]==1:
-        del X_distances[i]
-        del Y[i]
-X_distances =np.array(X_distances)
+#for i in reversed(range(len(X_distances))):
+#   if Y[i]==0 or Y[i]==1:
+#        del X_distances[i]
+#        del Y[i]
+X_dihedrals =np.array(X_dihedrals)
 
 
 
 
-#Y = ML.create_YC(Y,.7 )
+Y = ML.create_YC(Y,.70 )
 
 
 
-#ML.run_RFC(X_dihedrals,Y)
-#ML.run_SVM(X,Y)
+ML.run_RFC(X_dihedrals,Y)
+#ML.run_SVM(X_distances,Y)
 
-ML.run_RFR(X_distances,Y)
+#ML.run_RFR(X_distances,Y)
 
 import matplotlib.pyplot as plt
-for x in range(X_distances.shape[1]):
-    feature_values = X_distances[:, x]  # shape (N,)
+for x in range(X_dihedrals.shape[1]):
+    feature_values = X_dihedrals[:, x]  # shape (N,)
 
     plt.scatter(feature_values, Y, alpha=0.6)
     plt.xlabel(f'Feature at index {x}')

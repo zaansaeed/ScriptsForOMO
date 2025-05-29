@@ -3,22 +3,35 @@ from rdkit import Chem, RDConfig
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, rdFreeSASA, ChemicalFeatures
 from scipy import stats
 import pandas as pd
+import numpy as np
 from ML_functions import *
 from natsort import natsorted
 from functions_for_smile_to_xyz import boltzmann
 from functions_for_smile_to_xyz import AmideGroup, addAmides
-from mordred import Calculator, descriptors
+def distance_between_two_atoms(mol,ID1,ID2):
+    conf = mol.GetConformer()
+    atom_1_pos = conf.GetAtomPosition(ID1)
+    atom_2_pos = conf.GetAtomPosition(ID2)
+    return np.linalg.norm(atom_1_pos - atom_2_pos)
 
-import numbers
-def getAmideDistances(amideGroups,atom_coordinates):
-    distance_matrix = [[0.0 for _ in range(len(amideGroups))] for _ in range(len(amideGroups))]
+def getAmideDistances(amideGroups,mol):
+    distance_matrix = []
     for i,amid1 in enumerate(amideGroups):
+        distances_for_one_amid = []
         for j,amid2 in enumerate(amideGroups):
             if i == j and amid1.getH() is not None:
-                distance_matrix[i][j] = 0.0
+                distances_for_one_amid.append([0,0,0])
             else:
-
+                amid1C=amid1.getC()
+                amid2C=amid2.getC()
+                amid1N=amid1.getN()
+                amid2N=amid2.getN()
+                amid1O=amid1.getO()
+                amid2O=amid2.getO()
+                distances_for_one_amid.append([distance_between_two_atoms(mol,amid1C,amid2C),distance_between_two_atoms(mol,amid1O,amid2O),distance_between_two_atoms(mol,amid1N,amid2N)])
+        distance_matrix.append(distances_for_one_amid)
     return distance_matrix
+
 def load_xyz_coords(mol, xyz_path):
     conf = Chem.Conformer(mol.GetNumAtoms())
 
@@ -42,7 +55,7 @@ def load_xyz_coords(mol, xyz_path):
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 os.chdir(main_dir)
 all_records = []
-if os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
+if not os.path.exists(main_dir+'/amide_distances.csv'):
     for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder) :
             os.chdir(folder)
@@ -60,13 +73,14 @@ if os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
                     print(conformation_xyz)
                     mol.RemoveAllConformers()
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                    new_distances(mol)
-                    peptide_descriptors.append(new_distances(mol))
-            peptide_boltzmann= boltzmann(peptide_descriptors,working_dir,name)
+                    peptide_descriptors.append(getAmideDistances(amideGroups,mol))
+            peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
             print(peptide_boltzmann)
+            print(peptide_boltzmann.shape)
             all_records.append(peptide_boltzmann)
             os.chdir(main_dir)
     all_records = np.array(all_records)
+    all_record = np.reshape(len(all_records),-1)
     df = pd.DataFrame(all_records)
     df.to_csv(main_dir+'/boltzmann_descriptors.csv', index=False, header=False)
 
