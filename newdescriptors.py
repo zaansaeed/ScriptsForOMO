@@ -1,19 +1,10 @@
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor, HistGradientBoostingRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV ,cross_val_score, KFold
-from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, \
-     f1_score,mean_absolute_error, r2_score, root_mean_squared_error
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.svm import SVR, SVC
-from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split
-from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.pipeline import Pipeline
+from array import array
+from venv import create
+
 import numpy as np
 from rdkit import Chem, RDConfig
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, rdFreeSASA, ChemicalFeatures
-from scipy import stats
-import pandas as pd
+from natsort import natsorted
 from ML_functions import *
 from functions_for_smile_to_xyz import boltzmann
 
@@ -21,22 +12,36 @@ def compute_global_descriptors(mol):
     """
     Computes whole-molecule descriptors (2D + 3D) for a single Mol.
     """
-    descriptors=  {
-        # 2D topological/descriptive
-        'MolWt':           Descriptors.MolWt(mol),
-        'LogP':            Descriptors.MolLogP(mol),
-        'TPSA':            rdMolDescriptors.CalcTPSA(mol),
-        'NumHDonors':      rdMolDescriptors.CalcNumHBD(mol),
-        'NumHAcceptors':   rdMolDescriptors.CalcNumHBA(mol),
-        'NumRotatable':    rdMolDescriptors.CalcNumRotatableBonds(mol),
-        'NumRings':        rdMolDescriptors.CalcNumRings(mol),
-        'LabuteASA':       rdMolDescriptors.CalcLabuteASA(mol),
-        # 3D conformation‐dependent
-        'RadiusOfGyration': rdMolDescriptors.CalcRadiusOfGyration(mol, confId=0),
-        'Eccentricity':     rdMolDescriptors.CalcEccentricity(mol, confId=0),
-        'InertiaTensor1':   rdMolDescriptors.CalcInertialShapeFactor(mol, confId=0),
-    }
-    return list(descriptors.values())
+    desc = {}
+    desc['MolLogP'] = Descriptors.MolLogP(mol)
+    desc['MolMR'] = Descriptors.MolMR(mol)
+    desc['TPSA'] = rdMolDescriptors.CalcTPSA(mol)
+    desc['NumHAcceptors'] = Descriptors.NumHAcceptors(mol)
+    desc['NumHDonors'] = Descriptors.NumHDonors(mol)
+
+    # --- STERIC (2D) ---
+    desc['FractionCSP3'] = Descriptors.FractionCSP3(mol)
+    desc['NumRotatableBonds'] = Descriptors.NumRotatableBonds(mol)
+    desc['LabuteASA'] = Descriptors.LabuteASA(mol)
+    desc['BertzCT'] = Descriptors.BertzCT(mol)
+    desc['Kappa1'] = Descriptors.Kappa1(mol)
+    desc['Kappa2'] = Descriptors.Kappa2(mol)
+    desc['Kappa3'] = Descriptors.Kappa3(mol)
+    desc['BalabanJ'] = Descriptors.BalabanJ(mol)
+
+    # --- STERIC (3D) ---
+    desc['RadiusOfGyration'] = rdMolDescriptors.CalcRadiusOfGyration(mol)
+    desc['InertialShapeFactor'] = rdMolDescriptors.CalcInertialShapeFactor(mol)
+    desc['PMI1'] = rdMolDescriptors.CalcPMI1(mol)
+    desc['PMI2'] = rdMolDescriptors.CalcPMI2(mol)
+    desc['PMI3'] = rdMolDescriptors.CalcPMI3(mol)
+    desc['NPR1'] = rdMolDescriptors.CalcNPR1(mol)
+    desc['NPR2'] = rdMolDescriptors.CalcNPR2(mol)
+    desc['Asphericity'] = rdMolDescriptors.CalcAsphericity(mol)
+    desc['Eccentricity'] = rdMolDescriptors.CalcEccentricity(mol)
+    desc['SpherocityIndex'] = rdMolDescriptors.CalcSpherocityIndex(mol)
+
+    return list(desc.values())
 
 def load_xyz_coords(mol, xyz_path):
     conf = Chem.Conformer(mol.GetNumAtoms())
@@ -58,11 +63,11 @@ def load_xyz_coords(mol, xyz_path):
 
 
 
-main_dir="/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides"
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 os.chdir(main_dir)
 all_records = []
 if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
-    for folder in os.listdir(main_dir):
+    for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder) :
             os.chdir(folder)
             working_dir = os.getcwd()
@@ -70,12 +75,11 @@ if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
             smiles_string = open(f"{name}.smi").read().strip()
             print(name)
             peptide_descriptors = []
-            for conformation_xyz in os.listdir(f"{name}_Conformations"):
+            for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
                 if conformation_xyz.endswith('.xyz'):  # working within 1 conformer
                     mol = Chem.MolFromSmiles(smiles_string)
                     mol = Chem.AddHs(mol)
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                    compute_global_descriptors(mol)
                     peptide_descriptors.append(compute_global_descriptors(mol))
             peptide_boltzmann= boltzmann(peptide_descriptors,working_dir,name)
             print(peptide_boltzmann)
@@ -85,12 +89,66 @@ if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
     df = pd.DataFrame(all_records)
     df.to_csv(main_dir+'/boltzmann_descriptors.csv', index=False, header=False)
 
-X = []
+X_22 = []
 data = pd.read_csv(main_dir+'/boltzmann_descriptors.csv',header=None,index_col=None)
 for d in data.values.tolist():
-    X.append(d)
-print(X[0])
-Y = six_over_target_percents(create_outputs(main_dir))
-print(Y)
+    X_22.append(d)
 
-run_SVR(np.array(X),Y)
+X_22 = np.array(X_22)
+os.chdir(main_dir)
+
+Y = X_22[:,13]
+
+with open("all_peptides.smi", "r") as f:
+    smiles_lines = f.readlines()
+    smiles_lines = [line.strip() for line in smiles_lines]
+
+from collections import defaultdict
+name_to_indices = defaultdict(list)
+for i, name in enumerate(smiles_lines):
+    name_to_indices[name].append(i)
+
+indices_to_keep = set()
+for indices in name_to_indices.values():
+    if len(indices) == 1:
+        indices_to_keep.add(indices[0])
+    else:
+        best_index = max(indices, key=lambda x: Y[x])
+        indices_to_keep.add(best_index)
+
+indices_to_remove = [i for i in range(len(X_22)) if i not in indices_to_keep]
+Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
+
+X_22 =np.delete(X_22,13,1)
+
+X_dihedrals = create_X(main_dir, "BWDihedralNormalized") #ready for input
+X_distances = create_X(main_dir, "BWdistances")
+
+X_dihedrals = X_dihedrals.reshape(len(X_dihedrals), -1)
+X_distances = X_distances.reshape(len(X_distances), -1)
+
+X = np.hstack((X_dihedrals, X_distances,X_22))
+
+X = [j for i, j in enumerate(X) if i not in indices_to_remove]
+X=np.array(X)
+
+
+print(len(X),len(X[0]),len(Y))
+
+
+import matplotlib.pyplot as plt
+
+run_RFR(X,Y)
+
+
+for x in range(X.shape[1]):
+    feature_values = X[:, x]  # shape (N,)
+
+    plt.scatter(feature_values, Y, alpha=0.6)
+    plt.xlabel(f'Feature at index {x}')
+    plt.ylabel('Target variable')
+    plt.title(f'Scatter plot of Feature {x} vs Target')
+    plt.show()
+
+
+

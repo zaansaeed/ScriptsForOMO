@@ -2,7 +2,6 @@ import csv
 import os
 import subprocess
 import time
-from turtledemo.penrose import start
 
 from rdkit.Chem import AllChem
 from rdkit import Chem

@@ -66,7 +66,6 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                         data = data[:,:-1]
 
                         data[:,-1] = np.round(data[:,-1])
-                        print(data.shape,working_dir)
                         data = pd.DataFrame(data)
 
                     X.append(data.values.tolist())
@@ -75,24 +74,21 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
     #return X.reshape(len(X),-1)
     return X
 
-def create_outputs(main_dir):
+def create_Y(main_dir):
     Y =[]
     for item in os.listdir(main_dir):
         if item == "percent6-12-18.txt":
             with open(main_dir+"/percent6-12-18.txt",'r') as f:
                 for line in f:
                     row = [float(num) for num in line.split()]
-                    Y.append(row)
+                    Y.append(row[0] / (row[0] + row[1] + row[2]))
 
     return Y
 
-def six_over_target_percents(original_Y):
-    new_Y = []
-    for row in original_Y:
-        new_Y.append(row[0]/(row[0]+row[1]+row[2]))
-    return np.array(new_Y)
 
-def create_Y(outputs,cutoff):
+
+
+def create_YC(outputs,cutoff):
     Y =[]
     for item in outputs:
         if item >=cutoff:
@@ -108,16 +104,29 @@ def run_RFC(X,Y):
 
     X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-    pipeline = Pipeline([
+    param_grid = {
+        'n_estimators': [50, 100, 200],
+        'max_depth': [None, 5, 10, 20],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+        'max_features': ['sqrt'],
+        'bootstrap': [True],
+        'criterion': ['gini', 'entropy']
+    }
+    rfc = RandomForestClassifier( random_state=42)
+    grid_search = GridSearchCV(
+        estimator=rfc,
+        param_grid=param_grid,
+        cv=5,
+        scoring='f1_macro',  # or 'f1', 'roc_auc' depending on your goal
+        n_jobs=-1,  # use all available cores
+        verbose=1
+    )
 
-        ('pca', PCA(n_components=10)),
-        ('rf', RandomForestClassifier(random_state=42))
-    ])
-
-    pipeline.fit(X_train, y_train)
+    grid_search.fit(X_train, y_train)
 
     # Predict on test data
-    y_pred = pipeline.predict(X_test)
+    y_pred = grid_search.predict(X_test)
 
 
 
@@ -127,14 +136,9 @@ def run_RFC(X,Y):
     print("Accuracy: ", accuracy)
     print("F1: ", f1_score(y_test, y_pred, average='macro'))
     print(classification_report(y_test, y_pred))
-    plot_results(y_test, y_pred, pipeline)
-
-    from sklearn.dummy import DummyClassifier
-
-    dummy = DummyClassifier(strategy="most_frequent")
-    dummy.fit(X_train, y_train)
-    print("Baseline accuracy:", dummy.score(X_test, y_test))
-    print("Baseline f1:",f1_score(y_test, dummy.predict(X_test), average='macro'))
+    plot_results(y_test, y_pred, 'rfc')
+    print(grid_search.best_params_)
+    print(cross_val_score(grid_search.best_estimator_, X, Y, cv=5, scoring='f1_macro').mean())
 
 def run_SVM(X,Y):
     scaler = StandardScaler()
@@ -177,41 +181,41 @@ def run_RFR(X,Y):
 
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
+
     param_grid = {
-        'n_estimators': [150,1000],  # Fewer trees to keep it lightweight
-        'max_depth': [10,40, None],  # Shallow trees to prevent overfitting
-        'min_samples_split': [2, 10],  # Try larger splits to regularize
-        'min_samples_leaf': [2, 4,5],  # Larger leaves reduce model complexity
-        'max_features': ['sqrt'],  # Limit number of features at each split
-        'bootstrap': [True]  # Usually better for small data
+        'n_estimators': [50],
+        'max_depth': [3, 5,6,7],
+        'max_features': ['sqrt'],
+        'min_samples_split': [3,4, 5, 10],
+        'min_samples_leaf': [1, 2,3],
+        'bootstrap': [True],
     }
     rf = RandomForestRegressor(random_state=42)
-
-
-
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
-        scoring='neg_mean_squared_error',
+        scoring='r2',
         cv=5,
         n_jobs=-1,
         verbose=1
     )
 
+    rf.fit(X_train, Y_train)
+    #best = grid_search.best_estimator_
 
-    rf.fit(X_train,Y_train)
     y_pred = rf.predict(X_test)
-
+    #print(grid_search.best_params_)
     scores = cross_val_score(rf, X_train, Y_train, cv=5, scoring='r2')
+    print(scores)
     print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
     print("R2: ", r2_score(Y_test, y_pred))
     # print("Best params:", grid_search.best_params_)
     print("Mean Squared Error: ", mean_squared_error(Y_test, y_pred))
     print("Root Mean Squared Error:", np.sqrt(mean_squared_error(Y_test, y_pred)))
     print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
-    plot_results(Y_test, y_pred, rf)
+    plot_results(Y_test, y_pred, 'random forest')
 
-    top_n= 15
+    top_n= 10
     importances = rf.feature_importances_
     indices = np.argsort(importances)[::-1][:top_n]
 
@@ -225,34 +229,35 @@ def run_RFR(X,Y):
     plt.tight_layout()
     plt.show()
 
+
 def run_SVR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1,random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2,random_state=42)
 
     pipeline = Pipeline([
         #('scaler', StandardScaler()),
-        #('pca', PCA(n_components=15)),  # Let GridSearch decide n_components
+        #('pca', PCA(n_components=20)),  # Let GridSearch decide n_components
         ('svr', SVR())
     ])
 
     param_grid = {
         'svr__kernel': ['rbf'],
-        'svr__C': [500],
-        'svr__epsilon': [ .2],
+        'svr__C': [100],
+        'svr__epsilon': [ .1],
     }
 
 
 
-    svr = SVR(C=100,epsilon=.01,kernel='rbf')
+    svr = SVR(C=1,epsilon=.1,kernel='rbf')
     grid_search = GridSearchCV(pipeline, param_grid, scoring='r2', cv=5, n_jobs=-1)
-    svr.fit(X_train, Y_train)
-    #best_model = grid_search.best_estimator_
+    grid_search.fit(X_train, Y_train)
+    best_model = grid_search.best_estimator_
 
-    y_pred = svr.predict(X_test)
+    y_pred = best_model.predict(X_test)
     y_pred = np.clip(y_pred, 0, 1)
 
 
-    scores = cross_val_score(svr, X_train, Y_train, cv=5, scoring='r2')
+    scores = cross_val_score(best_model, X_train, Y_train, cv=5, scoring='r2')
     print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
     print("R2: ", r2_score(Y_test, y_pred))
     #print("Best params:", grid_search.best_params_)
@@ -262,4 +267,5 @@ def run_SVR(X,Y):
 
 
     plot_results(Y_test, y_pred, svr)
+
 

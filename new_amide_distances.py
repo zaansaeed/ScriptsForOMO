@@ -6,19 +6,19 @@ import pandas as pd
 from ML_functions import *
 from natsort import natsorted
 from functions_for_smile_to_xyz import boltzmann
-
+from functions_for_smile_to_xyz import AmideGroup, addAmides
 from mordred import Calculator, descriptors
 
 import numbers
-def compute_global_descriptors(mol):
-    calc = Calculator(descriptors,ignore_3D=False )
-    calc.descriptors = [d for d in calc.descriptors if d.require_3D == True]
-    desc = calc(mol)
-    desc_dict = desc.asdict()
-    clean_desc = {k: v for k,v in desc_dict.items() if isinstance(v,numbers.Number)}
-    print(len(clean_desc))
-    return list(clean_desc.values())
+def getAmideDistances(amideGroups,atom_coordinates):
+    distance_matrix = [[0.0 for _ in range(len(amideGroups))] for _ in range(len(amideGroups))]
+    for i,amid1 in enumerate(amideGroups):
+        for j,amid2 in enumerate(amideGroups):
+            if i == j and amid1.getH() is not None:
+                distance_matrix[i][j] = 0.0
+            else:
 
+    return distance_matrix
 def load_xyz_coords(mol, xyz_path):
     conf = Chem.Conformer(mol.GetNumAtoms())
 
@@ -53,13 +53,15 @@ if os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
             peptide_descriptors = []
             mol = Chem.MolFromSmiles(smiles_string)
             mol = Chem.AddHs(mol)
+
+            amideGroups = addAmides(mol)
             for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
                 if conformation_xyz.endswith('.xyz'):  # working within 1 conformer
                     print(conformation_xyz)
                     mol.RemoveAllConformers()
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                    compute_global_descriptors(mol)
-                    peptide_descriptors.append(compute_global_descriptors(mol))
+                    new_distances(mol)
+                    peptide_descriptors.append(new_distances(mol))
             peptide_boltzmann= boltzmann(peptide_descriptors,working_dir,name)
             print(peptide_boltzmann)
             all_records.append(peptide_boltzmann)
@@ -72,8 +74,7 @@ X = []
 data = pd.read_csv(main_dir+'/boltzmann_descriptors.csv',header=None,index_col=None)
 for d in data.values.tolist():
     X.append(d)
-print(X[0])
-Y = six_over_target_percents(create_outputs(main_dir))
-print(Y)
+Y = create_Y(main_dir)
+
 
 run_SVR(np.array(X),Y)
