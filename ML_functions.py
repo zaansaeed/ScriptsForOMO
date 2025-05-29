@@ -1,6 +1,6 @@
 import os
 from random import random
-
+from natsort import natsorted
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
@@ -54,12 +54,12 @@ def pad_square_dataframe_to_array(df,target_size,fill_value):
 
 def create_X(main_dir,feature): #takes in csv file and reads into array
     X= []
-    for item in os.listdir(main_dir):
+    for item in natsorted(os.listdir(main_dir)):
         working_dir = os.path.join(main_dir, item)
         if os.path.isdir(working_dir):
             os.chdir(working_dir)
             for file in os.listdir(working_dir):
-                if file.endswith(f"-{feature}.csv"):
+                if file.endswith(f"{feature}.csv"):
                     data = pd.read_csv(file,header=None,index_col=None)
                     if feature == "BWDihedralNormalized": #remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
                         data = np.array(data)
@@ -71,8 +71,7 @@ def create_X(main_dir,feature): #takes in csv file and reads into array
                     X.append(data.values.tolist())
 
     X= np.array(X)
-    #return X.reshape(len(X),-1)
-    return X
+    return X.reshape(len(X),-1)
 
 def create_Y(main_dir):
     Y =[]
@@ -105,13 +104,12 @@ def run_RFC(X,Y):
     X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
     param_grid = {
-        'n_estimators': [50, 100, 200],
+        'n_estimators': [50,75],
         'max_depth': [None, 5, 10, 20],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 2, 4],
         'max_features': ['sqrt'],
         'bootstrap': [True],
-        'criterion': ['gini', 'entropy']
     }
     rfc = RandomForestClassifier( random_state=42)
     grid_search = GridSearchCV(
@@ -181,15 +179,15 @@ def run_SVM(X,Y):
 
 def run_RFR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20,random_state=42)
 
 
     param_grid = {
-        'n_estimators': [50],
-        'max_depth': [3, 5,6,7],
+        'n_estimators': [40],
+        'max_depth': [10],
         'max_features': ['sqrt'],
-        'min_samples_split': [3,4, 5, 10],
-        'min_samples_leaf': [1, 2,3],
+        'min_samples_split': [2,3,4],
+        'min_samples_leaf': [1, 2,3,4],
         'bootstrap': [True],
     }
     rf = RandomForestRegressor(random_state=42)
@@ -202,23 +200,22 @@ def run_RFR(X,Y):
         verbose=1
     )
 
-    rf.fit(X_train, Y_train)
+    grid_search.fit(X_train, Y_train)
     #best = grid_search.best_estimator_
 
-    y_pred = rf.predict(X_test)
-    #print(grid_search.best_params_)
-    scores = cross_val_score(rf, X_train, Y_train, cv=5, scoring='r2')
+    y_pred = grid_search.best_estimator_.predict(X_test)
+    scores = cross_val_score(grid_search.best_estimator_, X_train, Y_train, cv=5, scoring='r2')
     print(scores)
     print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
     print("R2: ", r2_score(Y_test, y_pred))
-    # print("Best params:", grid_search.best_params_)
+    print("Best params:", grid_search.best_params_)
     print("Mean Squared Error: ", mean_squared_error(Y_test, y_pred))
     print("Root Mean Squared Error:", np.sqrt(mean_squared_error(Y_test, y_pred)))
     print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
     plot_results(Y_test, y_pred, 'random forest')
 
     top_n= 10
-    importances = rf.feature_importances_
+    importances = grid_search.best_estimator_.feature_importances_
     indices = np.argsort(importances)[::-1][:top_n]
 
     # Plot
@@ -234,7 +231,7 @@ def run_RFR(X,Y):
 
 def run_SVR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2,random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2,random_state=41)
 
     pipeline = Pipeline([
         #('scaler', StandardScaler()),

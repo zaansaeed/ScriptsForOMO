@@ -1,10 +1,12 @@
-
+import numpy as np
 from rdkit import Chem, RDConfig
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, rdFreeSASA, ChemicalFeatures
 from scipy import stats
 import pandas as pd
 from ML_functions import *
 from natsort import natsorted
+
+from ScriptsForOMO.ML_functions import create_Y
 from functions_for_smile_to_xyz import boltzmann
 
 from mordred import Calculator, descriptors
@@ -41,7 +43,7 @@ def load_xyz_coords(mol, xyz_path):
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 os.chdir(main_dir)
 all_records = []
-if os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
+if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
     for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder) :
             os.chdir(folder)
@@ -70,8 +72,51 @@ X = []
 data = pd.read_csv(main_dir+'/boltzmann_descriptors.csv',header=None,index_col=None)
 for d in data.values.tolist():
     X.append(d)
-print(X[0])
-Y = six_over_target_percents(create_outputs(main_dir))
-print(Y)
+X = np.array(X)
 
-run_SVR(np.array(X),Y)
+percents = create_Y(main_dir)
+
+with open("all_peptides.smi", "r") as f:
+    smiles_lines = f.readlines()
+    smiles_lines = [line.strip() for line in smiles_lines]
+
+with open("all_names.txt", "r") as f:
+    names_lines = f.readlines()
+    names_lines = [name.strip() for name in names_lines]
+
+names_percents_dictionary = dict(zip(names_lines,percents))
+names_percents_dictionary = dict((k,names_percents_dictionary[k]) for k in natsorted(names_percents_dictionary))
+
+Y = []
+for value in names_percents_dictionary.values():
+    Y.append(value)
+
+from collections import defaultdict
+
+name_to_indices = defaultdict(list)
+for i, name in enumerate(smiles_lines):
+    name_to_indices[name].append(i)
+
+indices_to_keep = set()
+for indices in name_to_indices.values():
+    if len(indices) == 1:
+        indices_to_keep.add(indices[0])
+    else:
+        best_index = max(indices, key=lambda x: Y[x])
+        indices_to_keep.add(best_index)
+
+indices_to_remove = [i for i in range(len(Y)) if i not in indices_to_keep]
+
+
+X = [j for i, j in enumerate(X) if i not in indices_to_remove]
+Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
+for i in reversed(range(len(X))):
+   if Y[i]==1 or Y[i]==0:
+        del X[i]
+        del Y[i]
+
+
+X = np.array(X)
+
+
+run_RFR(X,Y)

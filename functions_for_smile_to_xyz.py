@@ -211,7 +211,7 @@ class AmideGroup:
     def __init__(self, atom_IDs, group_num, Peptide):
         self.group_num = group_num
 
-        self.N= atom_IDs[0]
+        self.N = atom_IDs[0]
 
         nitrogen = Peptide.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()

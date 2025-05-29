@@ -19,7 +19,7 @@ def getAmideDistances(amideGroups,mol):
     for i,amid1 in enumerate(amideGroups):
         distances_for_one_amid = []
         for j,amid2 in enumerate(amideGroups):
-            if i == j and amid1.getH() is not None:
+            if i == j:
                 distances_for_one_amid.append([0,0,0])
             else:
                 amid1C=amid1.getC()
@@ -54,11 +54,11 @@ def load_xyz_coords(mol, xyz_path):
 
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 os.chdir(main_dir)
-all_records = []
-if not os.path.exists(main_dir+'/amide_distances.csv'):
-    for folder in natsorted(os.listdir(main_dir)):
-        if os.path.isdir(folder) :
-            os.chdir(folder)
+
+for folder in natsorted(os.listdir(main_dir)):
+    if os.path.isdir(folder):
+        os.chdir(folder) #currenlty working in Peptide_{name}
+        if not os.path.exists("NewBWDistances.csv"):
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             smiles_string = open(f"{name}.smi").read().strip()
@@ -75,20 +75,69 @@ if not os.path.exists(main_dir+'/amide_distances.csv'):
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
                     peptide_descriptors.append(getAmideDistances(amideGroups,mol))
             peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
-            print(peptide_boltzmann)
-            print(peptide_boltzmann.shape)
-            all_records.append(peptide_boltzmann)
-            os.chdir(main_dir)
-    all_records = np.array(all_records)
-    all_record = np.reshape(len(all_records),-1)
-    df = pd.DataFrame(all_records)
-    df.to_csv(main_dir+'/boltzmann_descriptors.csv', index=False, header=False)
-
-X = []
-data = pd.read_csv(main_dir+'/boltzmann_descriptors.csv',header=None,index_col=None)
-for d in data.values.tolist():
-    X.append(d)
-Y = create_Y(main_dir)
+            peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
+            df = pd.DataFrame(peptide_boltzmann)
+            df.to_csv('NewBWDistances.csv', index=False, header=False)
+        os.chdir(main_dir)
 
 
-run_SVR(np.array(X),Y)
+
+
+
+
+X = create_X(main_dir, "NewBWDistances")
+
+percents = create_Y(main_dir)
+
+os.chdir(main_dir)
+with open("all_peptides.smi", "r") as f:
+    smiles_lines = f.readlines()
+    smiles_lines = [line.strip() for line in smiles_lines]
+
+with open("all_names.txt", "r") as f:
+    names_lines = f.readlines()
+    names_lines = [name.strip() for name in names_lines]
+
+names_percents_dictionary = dict(zip(names_lines,percents))
+names_percents_dictionary = dict((k,names_percents_dictionary[k]) for k in natsorted(names_percents_dictionary))
+
+Y = []
+for value in names_percents_dictionary.values():
+    Y.append(value)
+
+from collections import defaultdict
+
+name_to_indices = defaultdict(list)
+for i, name in enumerate(smiles_lines):
+    name_to_indices[name].append(i)
+
+indices_to_keep = set()
+for indices in name_to_indices.values():
+    if len(indices) == 1:
+        indices_to_keep.add(indices[0])
+    else:
+        best_index = max(indices, key=lambda x: Y[x])
+        indices_to_keep.add(best_index)
+
+indices_to_remove = [i for i in range(len(Y)) if i not in indices_to_keep]
+
+
+X = [j for i, j in enumerate(X) if i not in indices_to_remove]
+Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
+
+for i in reversed(range(len(X))):
+    if Y[i]==0 or Y[i]==1:
+        del X[i]
+        del Y[i]
+
+X =np.array(X)
+#run_RFC(X,Y)
+run_RFR(X,Y)
+import matplotlib.pyplot as plt
+
+plt.hist(Y, bins=50, edgecolor='k')
+plt.title('Distribution of Y values')
+plt.xlabel('Y')
+plt.ylabel('Frequency')
+plt.show()
+
