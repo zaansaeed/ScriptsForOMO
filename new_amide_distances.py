@@ -86,7 +86,7 @@ for folder in natsorted(os.listdir(main_dir)):
 
 
 
-X = create_X(main_dir, "BWDihedralNormalized")
+X = create_X(main_dir, "BWdihedrals")
 
 percents = create_Y(main_dir)
 

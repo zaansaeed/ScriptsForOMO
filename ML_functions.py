@@ -15,6 +15,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import make_scorer
+
 
 
 def calc_metrics(Y_test, y_pred):
@@ -141,7 +143,7 @@ def run_RFC(X,Y):
 def run_SVM(X,Y):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     param_grid = {
         'C': [1],
         'kernel': ['rbf'],
@@ -183,7 +185,7 @@ def true_errors(Y_test, y_pred):
         "Poor": 0,
     }
     for Y, y in zip(Y_test, y_pred):
-        if abs(Y-y) <= 0.10:
+        if abs(Y-y) <= 0.1:
             ranges["Excellent"] += 1
         elif abs(Y-y) <= 0.20:
             ranges["Good"] += 1
@@ -198,10 +200,25 @@ def compute_weighted_success(category_counts, weights):
     score = sum(category_counts[cat] * weights.get(cat, 0) for cat in category_counts)
     return score / total if total > 0 else 0
 
+
+    # Custom weighted success scorer
+def custom_success_metric(y_true, y_pred):
+    errors = np.abs((y_pred - y_true) / y_true) * 100
+    score = 0
+    for err in errors:
+        if err <= 10:
+            score += 1.0
+        elif err <= 20:
+            score += 0.7
+        elif err <= 30:
+            score += 0.3
+        # Poor contributes 0
+    return score / len(y_true)
+
 def run_RFR(X,Y):
 
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3,random_state=42)
-
+    weighted_success_scorer = make_scorer(custom_success_metric,greater_is_better=True)
 
     param_grid = {
         'n_estimators': [50,75],
@@ -217,7 +234,7 @@ def run_RFR(X,Y):
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
-        scoring='r2',
+        scoring=weighted_success_scorer,
         cv=kf,
         n_jobs=-1,
         verbose=1
