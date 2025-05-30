@@ -1,13 +1,13 @@
+from array import array
+from tkinter.font import names
 
-from rdkit import Chem, RDConfig
-from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, rdFreeSASA, ChemicalFeatures
-from scipy import stats
-import pandas as pd
-import numpy as np
+from rdkit import Chem
 from ML_functions import *
 from natsort import natsorted
+from collections import defaultdict
+
 from functions_for_smile_to_xyz import boltzmann
-from functions_for_smile_to_xyz import AmideGroup, addAmides
+from functions_for_smile_to_xyz import addAmides
 
 def distance_between_two_atoms(mol,ID1,ID2):
     conf = mol.GetConformer()
@@ -52,94 +52,116 @@ def load_xyz_coords(mol, xyz_path):
     return mol
 
 
+def create_new_descriptor(descriptor_name,directory_of_peptides):
+    main_dir = os.path.abspath(directory_of_peptides)
+    os.chdir(main_dir)
+    for folder in natsorted(os.listdir(main_dir)):
+        if os.path.isdir(folder):
+            os.chdir(folder) #currenlty working in Peptide_{name}
+            if not os.path.exists(f"{descriptor_name}.csv"):
+                working_dir = os.getcwd()
+                name = folder.split("_")[1]
+                smiles_string = open(f"{name}.smi").read().strip()
+                print(name)
+                peptide_descriptors = []
+                mol = Chem.MolFromSmiles(smiles_string)
+                mol = Chem.AddHs(mol)
 
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
-os.chdir(main_dir)
+                amideGroups = addAmides(mol)
+                for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
+                    if conformation_xyz.endswith('.xyz'):  # working within 1 conformer
+                        mol.RemoveAllConformers()
+                        mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
 
-for folder in natsorted(os.listdir(main_dir)):
-    if os.path.isdir(folder):
-        os.chdir(folder) #currenlty working in Peptide_{name}
-        if not os.path.exists("NewBWDistances.csv"):
-            working_dir = os.getcwd()
-            name = folder.split("_")[1]
-            smiles_string = open(f"{name}.smi").read().strip()
-            print(name)
-            peptide_descriptors = []
-            mol = Chem.MolFromSmiles(smiles_string)
-            mol = Chem.AddHs(mol)
+                        #here, put the function of what you want to calcualte for each conformation
+                        peptide_descriptors.append(getAmideDistances(amideGroups,mol))
 
-            amideGroups = addAmides(mol)
-            for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
-                if conformation_xyz.endswith('.xyz'):  # working within 1 conformer
-                    print(conformation_xyz)
-                    mol.RemoveAllConformers()
-                    mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                    peptide_descriptors.append(getAmideDistances(amideGroups,mol))
-            peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
-            peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
-            df = pd.DataFrame(peptide_boltzmann)
-            df.to_csv('NewBWDistances.csv', index=False, header=False)
-        os.chdir(main_dir)
+                peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
+                peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
+                df = pd.DataFrame(peptide_boltzmann)
+                df.to_csv(f'{descriptor_name}.csv', index=False, header=False)
+            os.chdir(main_dir)
 
+def smart_parse_token(token: str):
+    try:
+        return float(token)
+    except ValueError:
+        return token
 
-
-
-
-
-X = create_X(main_dir, "NewBWDistances")
-
-percents = create_Y(main_dir)
-
-os.chdir(main_dir)
-with open("all_peptides.smi", "r") as f:
-    smiles_lines = f.readlines()
-    smiles_lines = [line.strip() for line in smiles_lines]
-
-with open("all_names.txt", "r") as f:
-    names_lines = f.readlines()
-    names_lines = [name.strip() for name in names_lines]
-
-names_percents_dictionary = dict(zip(names_lines,percents))
-names_percents_dictionary = dict((k,names_percents_dictionary[k]) for k in natsorted(names_percents_dictionary))
-
-Y = []
-for value in names_percents_dictionary.values():
-    Y.append(value)
-
-from collections import defaultdict
-
-name_to_indices = defaultdict(list)
-for i, name in enumerate(smiles_lines):
-    name_to_indices[name].append(i)
-
-indices_to_keep = set()
-for indices in name_to_indices.values():
-    if len(indices) == 1:
-        indices_to_keep.add(indices[0])
-    else:
-        best_index = max(indices, key=lambda x: Y[x])
-        indices_to_keep.add(best_index)
-
-indices_to_remove = [i for i in range(len(Y)) if i not in indices_to_keep]
+def read_file(file_name) -> list[str]:
+    with open(file_name, 'r') as f:
+        lines = f.readlines()
+        lines = [line.strip() for line in lines]
+        if '\t' in lines[0]: #if its gonna be a list of lists
+            lines = [[smart_parse_token(x) for x in line.strip().split('\t')] for line in lines]
+        return lines
 
 
-X = [j for i, j in enumerate(X) if i not in indices_to_remove]
-Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
 
-for i in reversed(range(len(X))):
-    if  Y[i]==0 or Y[i]==1:
-        del X[i]
-        del Y[i]
+def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[list,list,list]:
+    name_to_indices = defaultdict(list)
+    for i, name in enumerate(smiles_lines_all):
+        name_to_indices[name].append(i)
 
-X =np.array(X)
-Y=np.array(Y)
-#run_RFC(X,Y)
-run_RFR(X,Y)
-import matplotlib.pyplot as plt
+    indices_to_keep = set()
+    for indices in name_to_indices.values():
+        if len(indices) == 1:
+            indices_to_keep.add(indices[0])
+        else:
+            best_index = max(indices, key=lambda x: percents_all[x][0]) #first index of the [6,12,18]
+            indices_to_keep.add(best_index)
 
-plt.hist(Y, bins=50, edgecolor='k')
-plt.title('Distribution of Y values')
-plt.xlabel('Y')
-plt.ylabel('Frequency')
-plt.show()
-plt.clf()
+    indices_to_remove = [i for i in range(len(smiles_lines_all)) if i not in indices_to_keep]
+
+    smiles_lines_all = [j for i,j in enumerate(smiles_lines_all) if i not in indices_to_remove]
+    names_lines_all = [j for i,j in enumerate(names_lines_all) if i not in indices_to_remove]
+    print(names_lines_all)
+    percents_all = [j for i,j in enumerate(percents_all) if i not in indices_to_remove]
+    return smiles_lines_all, names_lines_all, percents_all
+
+
+def main():
+    main_dir = "/Users/zaansaeed/Peptides"
+    os.chdir(main_dir)
+
+    smiles_lines_all = read_file("all_peptides.smi") #list of smiles
+    names_lines_all = read_file("all_names.txt") # list of names
+    percents_all = read_file("percent6-12-18.txt")# list of lists of percents
+    smiles_lines_all = sort_by_names_alphabetically(names_lines_all,smiles_lines_all) #sorts bynames
+    percents_all = sort_by_names_alphabetically(names_lines_all,percents_all) #sorts by names
+    names_lines_all = sort_by_names_alphabetically(names_lines_all,names_lines_all) #changes order of names_lines, must be last
+
+
+    smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
+
+
+    X = create_X(main_dir,names_final,"BWdihedrals")
+    Y = create_Y(percents_final)
+
+    ### removal of 1s and 0s
+
+    X = X.tolist()
+    Y =Y.tolist()
+
+    for i in reversed(range(len(X))):
+        if Y[i] == 0 or Y[i] == 1:
+            del X[i]
+            del Y[i]
+    X = np.array(X)
+    Y = np.array(Y)
+    plot_Y_distribution(Y)
+    #run_RFR(X, Y, 0.2, 5)
+
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
