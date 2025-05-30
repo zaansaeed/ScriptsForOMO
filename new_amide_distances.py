@@ -53,13 +53,13 @@ def load_xyz_coords(mol, xyz_path):
 
 
 
-main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 os.chdir(main_dir)
 
 for folder in natsorted(os.listdir(main_dir)):
     if os.path.isdir(folder):
         os.chdir(folder) #currenlty working in Peptide_{name}
-        if os.path.exists("NewBWDistances.csv"):
+        if not os.path.exists("NewBWDistances.csv"):
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             smiles_string = open(f"{name}.smi").read().strip()
@@ -86,7 +86,7 @@ for folder in natsorted(os.listdir(main_dir)):
 
 
 
-X = create_X(main_dir, "BWdihedrals")
+X = create_X(main_dir, "NewBWDistances")
 
 percents = create_Y(main_dir)
 
