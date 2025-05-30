@@ -8,6 +8,7 @@ from ML_functions import *
 from natsort import natsorted
 from functions_for_smile_to_xyz import boltzmann
 from functions_for_smile_to_xyz import AmideGroup, addAmides
+
 def distance_between_two_atoms(mol,ID1,ID2):
     conf = mol.GetConformer()
     atom_1_pos = conf.GetAtomPosition(ID1)
@@ -52,13 +53,13 @@ def load_xyz_coords(mol, xyz_path):
 
 
 
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides")
 os.chdir(main_dir)
 
 for folder in natsorted(os.listdir(main_dir)):
     if os.path.isdir(folder):
         os.chdir(folder) #currenlty working in Peptide_{name}
-        if not os.path.exists("NewBWDistances.csv"):
+        if os.path.exists("NewBWDistances.csv"):
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             smiles_string = open(f"{name}.smi").read().strip()
@@ -85,7 +86,7 @@ for folder in natsorted(os.listdir(main_dir)):
 
 
 
-X = create_X(main_dir, "NewBWDistances")
+X = create_X(main_dir, "BWDihedralNormalized")
 
 percents = create_Y(main_dir)
 
@@ -126,11 +127,12 @@ X = [j for i, j in enumerate(X) if i not in indices_to_remove]
 Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
 
 for i in reversed(range(len(X))):
-    if Y[i]==0 or Y[i]==1:
+    if  Y[i]==0 or Y[i]==1:
         del X[i]
         del Y[i]
 
 X =np.array(X)
+Y=np.array(Y)
 #run_RFC(X,Y)
 run_RFR(X,Y)
 import matplotlib.pyplot as plt
@@ -140,4 +142,4 @@ plt.title('Distribution of Y values')
 plt.xlabel('Y')
 plt.ylabel('Frequency')
 plt.show()
-
+plt.clf()

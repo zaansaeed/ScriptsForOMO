@@ -1,11 +1,11 @@
 import os
-from random import random
+import math
 from natsort import natsorted
 import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor, HistGradientBoostingRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV ,cross_val_score, KFold
+from sklearn.model_selection import GridSearchCV ,cross_val_score, KFold
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, r2_score, make_scorer, \
      f1_score,mean_absolute_error, r2_score, root_mean_squared_error
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
@@ -175,36 +175,60 @@ def run_SVM(X,Y):
 
     plot_results(Y_test, y_pred, grid_search)
 
+def true_errors(Y_test, y_pred):
+    ranges = {
+        "Excellent": 0,
+        "Good": 0,
+        "Fair": 0,
+        "Poor": 0,
+    }
+    for Y, y in zip(Y_test, y_pred):
+        if abs(Y-y) <= 0.10:
+            ranges["Excellent"] += 1
+        elif abs(Y-y) <= 0.20:
+            ranges["Good"] += 1
+        elif abs(Y-y) <= 0.3:
+            ranges["Fair"] += 1
+        else:
+            ranges["Poor"] += 1
+    return ranges
 
+def compute_weighted_success(category_counts, weights):
+    total = sum(category_counts.values())
+    score = sum(category_counts[cat] * weights.get(cat, 0) for cat in category_counts)
+    return score / total if total > 0 else 0
 
 def run_RFR(X,Y):
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.20,random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3,random_state=42)
 
 
     param_grid = {
-        'n_estimators': [40],
-        'max_depth': [10],
+        'n_estimators': [50,75],
+        'max_depth': [8,9,10],
         'max_features': ['sqrt'],
         'min_samples_split': [2,3,4],
         'min_samples_leaf': [1, 2,3,4],
         'bootstrap': [True],
     }
     rf = RandomForestRegressor(random_state=42)
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
     grid_search = GridSearchCV(
         estimator=rf,
         param_grid=param_grid,
         scoring='r2',
-        cv=5,
+        cv=kf,
         n_jobs=-1,
         verbose=1
     )
 
-    grid_search.fit(X_train, Y_train)
-    #best = grid_search.best_estimator_
 
-    y_pred = grid_search.best_estimator_.predict(X_test)
-    scores = cross_val_score(grid_search.best_estimator_, X_train, Y_train, cv=5, scoring='r2')
+    grid_search.fit(X_train, Y_train)
+    best = grid_search.best_estimator_
+
+    y_pred = best.predict(X_test)
+    scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
     print(scores)
     print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
     print("R2: ", r2_score(Y_test, y_pred))
@@ -212,6 +236,17 @@ def run_RFR(X,Y):
     print("Mean Squared Error: ", mean_squared_error(Y_test, y_pred))
     print("Root Mean Squared Error:", np.sqrt(mean_squared_error(Y_test, y_pred)))
     print("Mean Absolute Error,", mean_absolute_error(Y_test, y_pred))
+    test_case = true_errors(Y_test,y_pred)
+    print("\n")
+    print(test_case)
+    weights = {
+        "Excellent": 1.0,
+        "Good": 0.7,
+        "Fair": 0.3,
+        "Poor": 0.0
+    }
+    print("success rate:",compute_weighted_success(test_case,weights))
+
     plot_results(Y_test, y_pred, 'random forest')
 
     top_n= 10
@@ -227,7 +262,27 @@ def run_RFR(X,Y):
     plt.ylabel("Importance")
     plt.tight_layout()
     plt.show()
+    scores = {
+        "Excellent": 0,
+        "Good": 0,
+        "Fair": 0,
+        "Poor": 0,
+    }
+    for i, (train_index, test_index) in enumerate(kf.split(X_train)):
+        x_train, x_test = X_train[train_index], X_train[test_index]
+        y_train, y_test = Y_train[train_index], Y_train[test_index]
+        best.fit(x_train, y_train)
+        y_pred = best.predict(x_test)
+        temp_scores = true_errors(y_test,y_pred)
+        scores = {key: scores[key]+temp_scores[key] for key in scores}
+        plot_results(y_test, y_pred, i)
+    print(scores)
 
+    plt.bar(scores.keys(), scores.values())
+    plt.xlabel('Category')
+    plt.ylabel('Count')
+    plt.title('Category Distribution')
+    plt.show()
 
 def run_SVR(X,Y):
 
