@@ -158,6 +158,7 @@ def custom_success_metric(y_true, y_pred):
             score += 0.7
         elif err <= 0.3:
             score += 0.3
+
         # Poor contributes 0
     return score / len(y_true)
 
@@ -181,10 +182,10 @@ def run_RFR(X,Y,test_size,n_splits):
     weighted_success_scorer = make_scorer(custom_success_metric,greater_is_better=True)
 
     param_grid = {
-        'n_estimators': [50,75],
-        'max_depth': [8,9,10],
+        'n_estimators': [50,75,100],
+        'max_depth': [7,8,9,10],
         'max_features': ['sqrt'],
-        'min_samples_split': [2,3,4],
+        'min_samples_split': [2,3,4,5],
         'min_samples_leaf': [1, 2,3,4],
         'bootstrap': [True],
     }

@@ -7,7 +7,7 @@ from ML_functions import *
 from natsort import natsorted
 
 from ScriptsForOMO.ML_functions import create_Y
-from functions_for_smile_to_xyz import boltzmann
+from functions import boltzmann
 
 from mordred import Calculator, descriptors
 

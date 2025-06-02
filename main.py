@@ -2,7 +2,7 @@ import os
 
 from sklearn.preprocessing import StandardScaler
 
-import functions_for_smile_to_xyz as fs
+import functions as fs
 import ML_functions as ML
 from natsort import natsorted
 import numpy as np
@@ -54,7 +54,7 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
 
     else:
         fs.smile_to_mae(smiles_lines[i], name)
-        fs.run_confsearch(name,working_dir)
+        fs.run_confSearch(name,working_dir)
         fs.mae_to_pdb(name,working_dir)
         fs.pdb_to_xyz(name,working_dir)
         fs.xyz_to_individual_xyz(name,working_dir)

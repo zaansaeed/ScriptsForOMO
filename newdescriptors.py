@@ -6,7 +6,7 @@ from rdkit import Chem, RDConfig
 from rdkit.Chem import AllChem, Descriptors, rdMolDescriptors, rdFreeSASA, ChemicalFeatures
 from natsort import natsorted
 from ML_functions import *
-from functions_for_smile_to_xyz import boltzmann
+from functions import boltzmann
 
 def compute_global_descriptors(mol):
     """

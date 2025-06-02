@@ -6,8 +6,8 @@ from ML_functions import *
 from natsort import natsorted
 from collections import defaultdict
 
-from functions_for_smile_to_xyz import boltzmann
-from functions_for_smile_to_xyz import addAmides
+from functions import boltzmann
+from functions import addAmides
 
 def distance_between_two_atoms(mol,ID1,ID2):
     conf = mol.GetConformer()
@@ -99,29 +99,29 @@ def read_file(file_name) -> list[str]:
 
 
 def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[list,list,list]:
-    name_to_indices = defaultdict(list)
-    for i, name in enumerate(smiles_lines_all):
-        name_to_indices[name].append(i)
+    smile_to_indices = defaultdict(list)
+    for i, smile in enumerate(smiles_lines_all):
+        smile_to_indices[smile].append(i)
+
 
     indices_to_keep = set()
-    for indices in name_to_indices.values():
+    for indices in smile_to_indices.values():
         if len(indices) == 1:
             indices_to_keep.add(indices[0])
         else:
-            best_index = max(indices, key=lambda x: percents_all[x][0]) #first index of the [6,12,18]
+            best_index = max(indices, key=lambda x: percents_all[x][0]/100) #first index of the [6,12,18]
             indices_to_keep.add(best_index)
 
     indices_to_remove = [i for i in range(len(smiles_lines_all)) if i not in indices_to_keep]
 
     smiles_lines_all = [j for i,j in enumerate(smiles_lines_all) if i not in indices_to_remove]
     names_lines_all = [j for i,j in enumerate(names_lines_all) if i not in indices_to_remove]
-    print(names_lines_all)
     percents_all = [j for i,j in enumerate(percents_all) if i not in indices_to_remove]
     return smiles_lines_all, names_lines_all, percents_all
 
 
 def main():
-    main_dir = "/Users/zaansaeed/Peptides"
+    main_dir = "/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides"
     os.chdir(main_dir)
 
     smiles_lines_all = read_file("all_peptides.smi") #list of smiles
@@ -134,8 +134,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-
-    X = create_X(main_dir,names_final,"BWdihedrals")
+    X = create_X(main_dir,names_final,"BWdistances")
     Y = create_Y(percents_final)
 
     ### removal of 1s and 0s
@@ -150,7 +149,7 @@ def main():
     X = np.array(X)
     Y = np.array(Y)
     plot_Y_distribution(Y)
-    #run_RFR(X, Y, 0.2, 5)
+    run_RFR(X, Y, 0.3, 5)
 
 
 

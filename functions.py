@@ -15,61 +15,117 @@ from natsort import natsorted
 
 main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 
-def split_xyz(temp_working_dir,input_file,name):
+def waiting_for_file(working_dir,name,wait_time) -> None:
+    """
+    Monitors a given directory for a file to exist and ensures the file size
+    stabilizes before exiting the function. This function is useful when a file is
+    being created or updated by another process, and you want to wait until it
+    is fully written before proceeding.
+
+    :param working_dir: The directory path to observe for the specified file.
+    :type working_dir: str
+    :param name: The name of the file to monitor within the directory.
+    :type name: str
+    :param wait_time: Time in seconds to wait between file size checks.
+    :type wait_time: float
+    :return: None
+    """
+    os.chdir(working_dir)
+    prev_size = -1
+    while not os.path.exists(name) or os.path.getsize(name) != prev_size:
+        if os.path.exists(name):
+            new_size = os.path.getsize(name)
+            if new_size == prev_size:
+                break
+            prev_size = new_size
+        time.sleep(wait_time)
+
+
+def split_xyz(working_dir,input_file,name) -> None:
+    """
+    Splits a single XYZ file containing all conformation coordinates into
+    separate XYZ files, each representing one conformation.
+
+    :param working_dir: Directory where the output XYZ files will be stored
+    :type working_dir: str
+    :param input_file: Path to the input XYZ file containing all conformations
+    :type input_file: str
+    :param name: Base name for the generated XYZ output files
+    :type name: str
+    :return: None
+
+    """
     with open(input_file, "r") as f:
         lines = f.readlines()
     with open(input_file, "r") as f:
         num_coords = int(lines[0].split()[0])
-        num_cords = num_coords + 2  # num of cords + 2 becuase of the length and name of peptide
-        conformations = []
+        num_cords = num_coords + 2  # num of cords + 2 because of the length and name of peptide
+        conformations = []  #will contain the n many arrays of coordinates of n conformations
         while True:
             lines = [f.readline() for i in range(num_cords)]
             if not any(lines):
                 break
             conformations.append(lines)
     for i, conf in enumerate(conformations):
-        output_file = os.path.join(temp_working_dir, f"{name}_Conformation_{i + 1}.xyz")
+        output_file = os.path.join(working_dir, f"{name}_Conformation_{i + 1}.xyz")
         with open(output_file, "w") as f:
             f.writelines(conf)
 
 
 
-def smile_to_mae(smile_string,name): #file with smiles, file wiht names, path to folder
-    os.chdir(main_dir)
-    # Process each SMILES string individually in Smiles_input_file and also add name
+def smile_to_mae(smile_string,name) -> None:
+    """
+    Converts a SMILES string to Maestro (MAE) format and organizes the output
+    into a specific folder structure. This function ensures that the required
+    files (SMILES file and Maestro file) are present, generating them if
+    necessary. It uses Schrodinger's LigPrep tool for the conversion process
+    when the Maestro file is not already available.
 
+    :param smile_string: The SMILES string representing the chemical structure
+        that will be converted into a Maestro (.mae) file.
+    :type smile_string: str
+    :param name: The name used for creating a unique folder and identifying
+        the associated files. This ensures proper organization and file
+        management.
+    :type name: str
+    :return: None
+    """
+
+    os.chdir(main_dir)
     folder_name = "Peptide_"+name
 
     if not os.path.exists(folder_name):     #if the folder already exists, skip - otherwise continue
         os.mkdir(folder_name)
     working_dir = main_dir+'/'+folder_name
-
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}.smi"):
+    if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it -contains smile string
         temp_smi = os.path.join(working_dir, f"{name}.smi")
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
-
-    if not os.path.exists(f"{name}.mae"):
-
-        #os.system("/opt/schrodinger/suites2024-3/ligprep -ismi " + name +".smi -omae " + name + ".mae")#converts smile to .mae
+    if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
-        while not os.path.exists(f"{name}.mae"):
-            time.sleep(1)
-        print("DONE CONVERTING TO MAE")
+        waiting_for_file(working_dir,f"{name}.mae",1) # wait until file is created
 
     os.chdir(main_dir)
 
 
+def run_confSearch(name,working_dir) -> None:
+    """
+    Generates and executes a conformational search configuration for a specified molecular input file.
 
+    This function sets up the required input file for a conformational search using
+    Schrödinger's Macromodel and executes the conformational search. It monitors the
+    creation and size of the output file to ensure completion and reports when done.
 
-
-
-
-def run_confsearch(name,working_dir):
+    :param name: The base name of the input .mae file and other related conformational
+        search files (e.g., "molecule" for "molecule.mae").
+    :param working_dir: The directory where the input and output files for conformational
+        search are located or will be created.
+    :return: None
+    """
     os.chdir(working_dir)
-    #we now have a .mae file of the smile string we will run conf search on. we need to make confsearch file
-    if not os.path.exists(name):
+
+    if not os.path.exists(name): #if the conf search file does not exist, we will create it.
         conf_search_file = os.path.join(working_dir, f"{name}")
         with open(conf_search_file, "w") as f:
             f.write(f"INPUT_STRUCTURE_FILE {name}.mae\n")
@@ -90,68 +146,85 @@ def run_confsearch(name,working_dir):
             f.write("ENERGY_WINDOW 104.6\n")
             f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
 
-    if not os.path.exists(f"{name}-out.mae"):
-        #os.system(f"/opt/schrodinger/suites2024-3/macromodel {name}") #if there is no input, then run confsearch
-        subprocess.run(["/opt/schrodinger/suites2024-3/macromodel", f"{name}"])
-        prev_size = -1
+    waiting_for_file(working_dir, f"{name}-out.mae",60)
 
-        while not os.path.exists(f"{name}-out.mae") or os.path.getsize(f"{name}-out.mae") != prev_size:
-            if os.path.exists(f"{name}-out.mae"):
-                new_size = os.path.getsize(f"{name}-out.mae")
-                if new_size == prev_size:
-                    break
-                prev_size = new_size
-            time.sleep(60)
-
-        print("DONE RUNNING CONFSEARCH")
+    print("DONE RUNNING CONFSEARCH")
 
     os.chdir(main_dir)
 
 
+def mae_to_pdb(name,working_dir) -> None:
+    """
+    Converts a Maestro (.mae) file to a Protein Data Bank (.pdb) file using the
+    Schrödinger structconvert utility. The function navigates to the specified
+    working directory, performs the file conversion, and ensures the output file
+    is created before returning to the original directory.
 
-def mae_to_pdb(name,working_dir):
+    :param name: The name of the file without extension. This will be appended
+        with '-out.mae' and '-out.pdb' for input and output file names,
+        respectively.
+    :type name: str
+    :param working_dir: The working directory where the input file is located.
+        It is also used for temporary operations during the file conversion.
+    :type working_dir: str
+    :return: None
+    """
     #convert to pdb
+
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.pdb"):
-        #os.system(f"/opt/schrodinger/suites2024-3/utilities/structconvert {name}-out.mae {name}-out.pdb")
         subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
-        prev_size = -1
-        while not os.path.exists(f"{name}-out.pdb") or os.path.getsize(f"{name}-out.pdb") != prev_size:
-            if os.path.exists(f"{name}-out.pdb"):
-                new_size = os.path.getsize(f"{name}-out.pdb")
-                if new_size == prev_size:
-                    break
-                prev_size = new_size
-            time.sleep(30)
+        waiting_for_file(working_dir,f"{name}-out.pdb",30)
 
         print("DONE CONVERTING MAE TO PDB")
 
     os.chdir(main_dir)
 
 
+def pdb_to_xyz(name,working_dir) -> None:
+    """
+    Converts a PDB file to an XYZ file using Open Babel. This function changes the current
+    working directory to the specified `working_dir` and triggers the conversion process.
+    If the conversion output file is not found or its size changes during the process,
+    it revalidates periodically until the file has stabilized or exists.
 
-def pdb_to_xyz(name,working_dir):
+    :param name: Name of the file (without extension) to be converted.
+    :type name: str
+    :param working_dir: Directory where the PDB input file exists and where the XYZ
+        output file will be created.
+    :type working_dir: str
+    :returns: None
+    """
     #convert to xyz
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
-        prev_size = -1
-        while not os.path.exists(f"{name}-out.xyz") or os.path.getsize(f"{name}-out.xyz") != prev_size:
-            if os.path.exists(f"{name}-out.xyz"):
-                new_size = os.path.getsize(f"{name}-out.xyz")
-                if new_size == prev_size:
-                    break
-                prev_size = new_size
-            time.sleep(10)
+
+        waiting_for_file(working_dir,f"{name}-out.xyz",10)
 
         print("DONE CONVERTING PDB TO XYZ")
 
     os.chdir(main_dir)
 
 
-def xyz_to_individual_xyz(name,working_dir):
+def xyz_to_individual_xyz(name,working_dir) -> None:
+    """
+    Converts a combined XYZ file to individual XYZ files and saves them in a newly
+    created directory named after the provided name followed by "_Conformations".
+    If the target directory already exists, the function will skip the directory
+    creation step. The process switches directories to perform the operation and
+    returns to the initial working directory at the end.
+
+    :param name: The base name used to create the target directory and individual XYZ
+        files.
+    :type name: str
+    :param working_dir: The current working directory where the operation begins
+        and where the combined XYZ file is expected to be located.
+    :type working_dir: str
+    :return: None
+    """
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}_Conformations"):
+    if not os.path.exists(f"{name}_Conformations"): #create folder with all conforamtions
         os.mkdir(f"{name}_Conformations")
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir)
@@ -162,14 +235,37 @@ def xyz_to_individual_xyz(name,working_dir):
     os.chdir(main_dir)
 
 
-def extract_energies_to_csv(name,working_dir):
+def extract_energies_to_csv(name,working_dir) -> None:
+    """
+    Extracts energy values from a log file and saves them into a CSV file. Processes
+    each line in a specified log file to identify and extract conformation energy
+    values. These values are then arranged into a pandas DataFrame object, and
+    stored in a CSV file with a specified naming convention.
+
+    This function assumes that the log file includes lines containing the text
+    "Conformation " and that the energy values are located in the fourth column
+    after splitting the line.
+
+    If a CSV file with the expected name already exists in the working directory,
+    the function will not process the log file and terminates its operations without
+    duplicating the file.
+
+    :param name: The base name of the log file (without the file extension). The same
+                 name is used as the base name for the output CSV file.
+    :type name: str
+    :param working_dir: Absolute or relative path to the working directory where the
+                        input log file is located and the output CSV file will be saved.
+    :type working_dir: str
+    :return: This function does not return any value.
+    :rtype: None
+    """
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-energies.csv"):
         with open(f"{name}.log", "r") as f:
             conformations_list = []
             lines = f.readlines()
             for line in lines:
-                if "Conformation " in line:
+                if "Conformation " in line: #should be consistent across any log file generated
                     conformations_list.append(line.split()[3])
         df = pd.DataFrame(conformations_list, columns=["Energies"])
         num_energies = len(df)
@@ -186,9 +282,30 @@ def extract_energies_to_csv(name,working_dir):
 
 #+====================================================================================
 
-def bfs_traversal(mol, startingID):
+def bfs_traversal(mol, starting_id) -> list[int]:
+    """
+    Performs a breadth-first search (BFS) traversal on a molecular graph starting from
+    the specified atom ID (N-terminus) and returns a list containing the IDs of nitrogen atoms visited
+    in the order they are encountered during the traversal.
+
+    The function uses a queue-based BFS algorithm to explore the molecular structure,
+    and only detects and collects nitrogen atoms ('N') encountered during the traversal.
+
+    :param mol: A molecular object representing the molecular graph. Typically requires
+        the object to support accessing atom information through methods like
+        `GetAtomWithIdx` and `GetNeighbors`.
+    :type mol: RDKit Mol
+
+    :param starting_id: The index of the starting atom in the traversal. This is the
+        point from which the BFS exploration begins.
+    :type starting_id: int
+
+    :return: A list of indices representing the nitrogen atoms encountered in BFS order
+        during the traversal.
+    :rtype: list[int]
+    """
     visited = set()
-    queue = deque([startingID])
+    queue = deque([starting_id])
     bfs_order = []
     while queue:
         atom_id = queue.popleft()
@@ -207,18 +324,25 @@ def bfs_traversal(mol, startingID):
     return bfs_nitrogens
 
 class AmideGroup:
+    """
+    Represents an amide group within a peptide, including its atomic components and relationships.
 
-    def __init__(self, atom_IDs, group_num, Peptide):
+    This class identifies and stores the relevant atom IDs (Carbon, Oxygen, Nitrogen, and Hydrogen)
+    of an amide group from a peptide structure. The primary purpose of this class is to facilitate
+    access to these atom IDs, allowing further analysis or manipulation of the amide group within
+    the peptide.
+    """
+
+    def __init__(self,atom_ids, group_num, peptide):
+        # Recheck if this is the best way to find N and other IDs, based on how amide groups are found
         self.group_num = group_num
+        self.N = atom_ids[0]
 
-        self.N = atom_IDs[0]
-
-        nitrogen = Peptide.GetAtomWithIdx(self.N)
+        nitrogen = peptide.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()
         hydrogen_id = None
 
         for neighbor in neighbors:
-
             if neighbor.GetSymbol() == 'H':
                 hydrogen_id = neighbor.GetIdx()
             if neighbor.GetSymbol() == 'C':
@@ -228,7 +352,6 @@ class AmideGroup:
                         self.O=neighbor2.GetIdx()
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
-
 
     def getIDs(self):
         return self.atom_IDs
@@ -240,45 +363,90 @@ class AmideGroup:
         return self.N
     def getH(self):
         return self.H
-    def getGroupNum(self):
-        return self.group_num
 
-def find_n_terminus(input_peptide):
+
+def find_n_terminus(input_peptide) -> int:
+    """
+    Identifies and returns the index of the N-terminus in a given peptide structure. The N-terminus
+    residue can exist in either a normal or an abnormal form. The function searches the peptide
+    structure for these substructural matches and determines the N-terminus accordingly.
+
+    :param input_peptide: The molecular representation of the peptide structure to be analyzed.
+                         This is an RDKit Mol object that must represent a peptide structure.
+    :return: The zero-based index of the atom constituting the N-terminus of the peptide.
+    :rtype: int
+    :raises Exception: If no N-terminus structure is found in the input peptide.
+    """
     n_terminus_residue_normal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)'))
     n_terminus_residue_abnormal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)'))
-    if n_terminus_residue_normal:
-        return n_terminus_residue_normal[0][0]
-    else:
-        return n_terminus_residue_abnormal[0][0]
+    try:
+        if n_terminus_residue_normal:
+            return n_terminus_residue_normal[0][0]
+        else:
+            return n_terminus_residue_abnormal[0][0]
+    except IndexError:
+        raise Exception("No N-terminus found in the input peptide.")
 
-def addAmides(input_peptide):
-    amideGroups = []
-    matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# N[C;X4][C;X3](=[O])N
-    matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))#N[C;X4][C;X4][C;X3](=[O])N
+def add_amides(input_peptide) -> list[AmideGroup]:
+    """
+    Identifies amide groups in the given peptide molecule and returns them as a list of AmideGroup
+    objects. This function searches for specific substructure patterns indicative of amide groups.
+    The function also ensures that only unique amide groups, identified by their atom IDs, are
+    added to the resulting list. It processes the molecule in a breadth-first traversal order
+    starting from the N-terminus.
+
+    :param input_peptide: The input molecule, represented as an RDKit molecule object, in which
+                          amide groups are to be identified.
+    :type input_peptide: Chem.Mol
+    :return: A list of AmideGroup objects representing the identified amide groups.
+    :rtype: list[AmideGroup]
+    """
+    amide_groups, used_ids = [],[]
+    matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# normal case, 2 carbons
+    matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))# abnormal case, 3 carbons
     matches = matches1 + matches2
 
     n_terminus = find_n_terminus(input_peptide)
-
     bfs_order = bfs_traversal(input_peptide, n_terminus)
+
     i = 1
-    used_IDS = []
     for nID in bfs_order:
         for match in matches:
             if nID in match and n_terminus not in match:
                 amide = AmideGroup(match, i, input_peptide)
-                amide_IDS = amide.getIDs()
-                if amide_IDS not in used_IDS:
-                    amideGroups.append(AmideGroup(match, i, input_peptide))
-                    used_IDS.append(amide_IDS)
+                amide_ids = amide.getIDs()
+                if amide_ids not in used_ids:
+                    amide_groups.append(amide)
+                    used_ids.append(amide_ids)
                     i += 1
 
-    return amideGroups
+    return amide_groups
 
 
-def getAmideDistances(amideGroups,atom_coordinates):
-    distance_matrix = [[0.0 for _ in range(len(amideGroups))] for _ in range(len(amideGroups))]
-    for i,amid1 in enumerate(amideGroups):
-        for j,amid2 in enumerate(amideGroups):
+def get_amide_distances(amide_groups,atom_coordinates) -> list[list[float]]:
+    """
+    Computes the distances between amide groups in a protein structure based on their
+    atomic coordinates. This function calculates a pairwise distance matrix where each
+    entry represents the distance between the Hydrogen atom of one amide group's Nitrogen
+    and the Oxygen atom of another amide group's Carbon. For amide groups without a Nitrogen
+    Hydrogen atom (e.g., proline), the distance is set to -1.0.
+
+    :param amide_groups: A list of amide group instances, where each instance should have
+        methods `getH()` to return the Hydrogen atom index (or None if not present) and
+        `getO()` to return the Oxygen atom index.
+    :type amide_groups: list
+    :param atom_coordinates: A dictionary mapping atomic indices to their 3D coordinates as
+        numpy arrays. The keys correspond to atomic indices, and the values are numpy arrays
+        of shape (3,) representing x, y, z coordinates.
+    :return: A 2D distance matrix where the entry at [i][j] represents the distance between
+        the Hydrogen atom of the ith amide group and the Oxygen atom of the jth amide group.
+        Entries for self-distances (i.e., when i == j) are set to 0.0 if a Hydrogen atom exists
+        for the amide group. For any missing Hydrogen, the distance is -1.0 (e.g., prolines).
+    :rtype: list[list[float]]
+    """
+    distance_matrix = [[0.0 for _ in range(len(amide_groups))] for _ in range(len(amide_groups))]
+    for i,amid1 in enumerate(amide_groups):
+        for j,amid2 in enumerate(amide_groups):
             if i == j and amid1.getH() is not None:
                 distance_matrix[i][j] = 0.0
             else:
@@ -289,13 +457,32 @@ def getAmideDistances(amideGroups,atom_coordinates):
                     amid2O = amid2.getO()
                     amid1H_pos = atom_coordinates[amid1H]
                     amid2O_pos = atom_coordinates[amid2O]
-                    distance = ((amid1H_pos[0] - amid2O_pos[0])**2 + (amid1H_pos[1] - amid2O_pos[1])**2 + (amid1H_pos[2] - amid2O_pos[2])**2)**0.5
-                    distance_matrix[i][j] = distance
+                    distance_matrix[i][j] = np.linalg.norm(np.array(amid1H_pos)-np.array(amid2O_pos))
     return distance_matrix
 
-def xyz_to_array(xyz_file):
-    #oth index is num atoms
-    #ith index is ith atom ID
+
+##ENSURE THIS WORKS
+def xyz_to_array(xyz_file) -> list[list[float]]:
+    """
+    Convert the content of an `.xyz` file into a list representation where the
+    coordinates of atoms are stored along with the number of atoms in the file.
+    The `.xyz` format is commonly used for molecular structure files containing
+    atomic positions.
+
+    This function reads the file, extracts the number of atoms, and iterates through
+    the lines containing atomic coordinate data, converting them into a list of
+    float values.
+
+    :param xyz_file: Path to the input `.xyz` file containing atomic coordinate data.
+    :type xyz_file: str
+    :return: A list where the first element is an integer indicating the number
+        of atoms, and subsequent elements are sublists, each containing the
+        x, y, and z coordinates of one atom.
+    :rtype: list[list[float]]
+    """
+    #oth index of coordinates is num atoms
+    #ith index of coordinates is ith atom ID i.e. index 1 is the first atom ID 1
+
     with open(xyz_file, 'r', encoding= 'utf-8') as file:
         lines = file.readlines()
     num_atoms = int(lines[0].strip())
@@ -309,49 +496,78 @@ def xyz_to_array(xyz_file):
     return coordinates
 
 
+def boltzmann_weight_energies(name,working_dir, update_matrices) -> None:
+    """
+    Calculate and store the Boltzmann-weighted energies based on molecular conformations.
 
+    This function performs multiple operations including creating molecular
+    representations, calculating amide group distances for conformations, computing
+    Boltzmann-weighted matrices of distances, and saving results to a CSV file. The
+    process involves reading input SMILES files, generating molecular conformations,
+    and determining their Boltzmann-weighted contributions.
 
+    :param name: The name identifier for the molecular system. This is used to
+                 reference the input SMILES (.smi) file and naming the output
+                 files for distances.
+    :type name: str
+    :param working_dir: The file path to the working directory where input files
+                        are located and output files are saved. Subdirectories for
+                        intermediate data may also be created under this path.
+    :type working_dir: str
+    :param update_matrices: A flag indicating whether to force the update of the
+                            Boltzmann-weighted matrix and overwrite the existing
+                            result file.
+    :type update_matrices: bool
+    :return: None
+    """
 
-
-def boltzmann_weight_energies(name,working_dir, update_matrices):
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices: #hcange to not
+    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
         with open(f"{name}.smi", "r") as f:
             smiles_string = f.readlines()[0]
 
         peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
         AllChem.EmbedMolecule(peptide)
-        amideGroups = addAmides(peptide)
+        amideGroups = add_amides(peptide)
 
         temp_working_dir = working_dir + f"/{name}_Conformations"
-        os.chdir(temp_working_dir)
+        os.chdir(temp_working_dir) #working in conforamtions folder
         distances = []
         for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
-            if conformation_xyz.endswith('.xyz'):
-                atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
-                distances.append(getAmideDistances(amideGroups,atom_coordinates))
+            atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
+            distances.append(get_amide_distances(amideGroups,atom_coordinates))
         os.chdir(working_dir)
+
         boltzmann_matrix = boltzmann(distances, working_dir,name)
 
 
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
 
-    if update_matrices:
-        print("UPDATED BOLTZMANN MATRIX")
-
-
     os.chdir(main_dir)
 
 
 
 
-
-
 ################################################
 ################################################
 
-def load_xyz_coords(mol, xyz_path):
+def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
+    """
+    Loads atomic coordinates for a molecular structure from an XYZ file and updates
+    the input molecule object with the new coordinates. The function extracts
+    coordinates from the XYZ file, constructs a conformer, and assigns it to the
+    input RDKit molecule.
+
+    :param mol: The molecule object that will have its coordinates updated.
+    :type mol: Chem.Mol
+    :param xyz_path: Path to the XYZ file containing molecular coordinates in the format
+                     where the first two lines are skipped, and subsequent lines contain
+                     atomic symbol followed by x, y, z coordinates.
+    :type xyz_path: str
+    :return: The input molecule with updated coordinates.
+    :rtype: Chem.Mol
+    """
     conf = Chem.Conformer(mol.GetNumAtoms())
 
     with open(xyz_path, 'r') as f:
