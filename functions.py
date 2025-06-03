@@ -2,8 +2,9 @@ import csv
 import os
 import subprocess
 import time
+from tokenize import group
 
-from rdkit.Chem import AllChem
+from rdkit.Chem import AllChem, FragmentOnBonds
 from rdkit import Chem
 import pandas as pd
 from collections import deque
@@ -333,7 +334,7 @@ class AmideGroup:
     the peptide.
     """
 
-    def __init__(self,atom_ids, group_num, peptide):
+    def __init__(self,atom_ids, group_num, peptide,amide_groups):
         # Recheck if this is the best way to find N and other IDs, based on how amide groups are found
         self.group_num = group_num
         self.N = atom_ids[0]
@@ -350,8 +351,64 @@ class AmideGroup:
                     if neighbor2.GetSymbol() == 'O':
                         self.C=neighbor.GetIdx()
                         self.O=neighbor2.GetIdx()
+        self.Residue= None
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
+
+        #if group num is 1, then cut bond on Nitrogen, thats residue,
+        # cut bond from nitrogen to oxygen and nitrogen to carbon, (second to last id )
+        # ('NCC(=O)N'))# normal case, 2 carbons
+        #     'NCCC(=O)N'))# abnormal case, 3 carbons
+        atom1, atom2, atom3, atom4 = 0,0,0,0
+        bond1,bond2 = None,None
+        if group_num == 1: #if its the first amide, aka N-termini case
+            atom1 = self.N #last nitrogen, which is where we want to cut
+            atom2 = self.C #carbon to which this nitrogen is connected to
+            for bond in peptide.GetBonds():
+                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                    bond1 = bond.GetIdx()
+            mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
+            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
+
+            frags = []
+            for atom_ids in frags_ids:
+                # PathToSubmol keeps atom indices + conformers
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                if self.C in atom_ids:
+                    self.Residue = (frag_mol,atom_ids)
+        else: # if this is another amide, not the first one
+            prev_amide = amide_groups[group_num-2]
+            atom1 = prev_amide.getN() #the residue AFTER these atoms
+            atom2 = prev_amide.getC()
+            atom3 = self.N #the residue BEFORE these atoms (remember, the amide group youre currently on is  the 0th index of atom_ids, or self.N)
+            atom4 = self.C #
+            for bond in peptide.GetBonds():
+                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                    bond1 = bond.GetIdx()
+                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
+                    bond2 = bond.GetIdx()
+            if bond1 == bond2: #trivial case, should never happen
+                self.Residue = None
+                return
+            mol_frag = FragmentOnBonds(peptide,[bond1,bond2],addDummies=False)
+            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
+            frags = []
+            for atom_ids in frags_ids:
+                # PathToSubmol keeps atom indices + conformers
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                if self.C in atom_ids:
+                    self.Residue = (frag_mol, atom_ids)
+
+        print(atom1,atom2,atom3,atom4,group_num)
+
+
+
+
+
+
+
+    def getResidue(self):
+        return self.Residue
 
     def getIDs(self):
         return self.atom_IDs
@@ -413,7 +470,7 @@ def add_amides(input_peptide) -> list[AmideGroup]:
     for nID in bfs_order:
         for match in matches:
             if nID in match and n_terminus not in match:
-                amide = AmideGroup(match, i, input_peptide)
+                amide = AmideGroup(match, i, input_peptide,amide_groups)
                 amide_ids = amide.getIDs()
                 if amide_ids not in used_ids:
                     amide_groups.append(amide)
@@ -691,7 +748,7 @@ def extract_boltzmann_weighted_dihedrals_normalized():
                 peptide_normalized_dihedrals = []
                 mol = Chem.MolFromSmiles(smiles_string)
                 mol = Chem.AddHs(mol)
-                mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
+                #add embeding?
                 n_terminus = find_n_terminus(mol)
                 nitrogen_order = bfs_traversal(mol, n_terminus)
                 n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
@@ -721,7 +778,8 @@ def extract_boltzmann_weighted_dihedrals_normalized():
 
                 for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
                     if conformation_xyz.endswith('.xyz'): #working within 1 conformer
-
+                        mol.RemoveAllConformers()
+                        mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
                         conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
                         for residue in ordered_residues:
                             conformation_dihedrals.append(calculate_dihedrals(residue,mol))
@@ -761,6 +819,13 @@ def extract_boltzmann_weighted_dihedrals_normalized():
 
 
 def boltzmann(values, working_dir,name):
+    '''
+
+    :param values:
+    :param working_dir:
+    :param name:
+    :return:
+    '''
     energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
     energy_vals = energies['Energies'].values
     print(energy_vals[0])

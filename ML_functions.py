@@ -10,6 +10,7 @@ from sklearn.metrics import accuracy_score, classification_report, mean_squared_
 from sklearn.svm import SVR
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import make_scorer
+from sklearn.dummy import DummyRegressor
 
 
 
@@ -38,26 +39,33 @@ def plot_results(true_labels_for_testing, y_pred, model):
     plt.tight_layout()
     plt.show()
 
-
-
-def create_X(main_dir,names,feature): #takes in csv file and reads into array
-    X= []
+def peptide_csv_to_array(main_dir,names,feature):
+    X = []
     for name in names:
         working_dir = os.path.join(main_dir, f"Peptide_{name}")
         if os.path.isdir(working_dir):
             os.chdir(working_dir)
-            for file in os.listdir(working_dir):
+            for file in os.listdir(working_dir):  # working in folder
                 if file.endswith(f"{feature}.csv"):
-                    data = pd.read_csv(file,header=None,index_col=None)
-                    if feature == "BWDihedralNormalized": #remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
+                    data = pd.read_csv(file, header=None, index_col=None)
+                    if feature == "BWDihedralNormalized":  # remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
                         data = np.array(data)
-                        data = data[:,:-1]
-                        data[:,-1] = np.round(data[:,-1])
+                        data = data[:, :-1]
+                        data[:, -1] = np.round(data[:, -1])
                         data = pd.DataFrame(data)
                     X.append(data.values.tolist())
 
-    X= np.array(X)
-    return X.reshape(len(X),-1)
+    X = np.array(X)
+    return X.reshape(len(X), -1)
+
+def create_X(main_dir,names,features): #takes in csv file and reads into array
+    X = []
+    for feature in features:
+        data = peptide_csv_to_array(main_dir,names,feature)
+        X.append(data)
+    X = np.hstack([arr for arr in X])
+    return X
+
 
 def sort_by_names_alphabetically(names,values) -> list:
     names_percents_dictionary = dict(zip(names, values))
@@ -77,14 +85,6 @@ def create_Y(percents) -> np.array:
 
 
 
-def create_YC(outputs,cutoff):
-    Y =[]
-    for item in outputs:
-        if item >=cutoff:
-            Y.append(1)
-        else:
-            Y.append(0)
-    return np.array(Y)
 
 
 
@@ -182,12 +182,13 @@ def run_RFR(X,Y,test_size,n_splits):
     weighted_success_scorer = make_scorer(custom_success_metric,greater_is_better=True)
 
     param_grid = {
-        'n_estimators': [50,75,100],
-        'max_depth': [7,8,9,10],
+        'n_estimators': [75,50],
+        'max_depth': [6,7,8],
         'max_features': ['sqrt'],
         'min_samples_split': [2,3,4,5],
-        'min_samples_leaf': [1, 2,3,4],
+        'min_samples_leaf': [1,2,3,4,5],
         'bootstrap': [True],
+
     }
     rf = RandomForestRegressor(random_state=42)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -240,6 +241,16 @@ def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
         mean_CV_metric += temp_metric
     print("mean success rate on cv:", mean_CV_metric/kf.n_splits)
 
+def dummy_RFR(X,Y,test_size):
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
+
+    # Dummy model that always predicts the mean of y_train
+    dummy = DummyRegressor(strategy='mean')
+    dummy.fit(X_train, y_train)
+
+    # Predict and evaluate
+    y_pred = dummy.predict(X_test)
+    print("dummy regressor: ", custom_success_metric(y_test, y_pred))
 
 def plot_scores_distribution(scores):
     plt.bar(scores.keys(), scores.values())

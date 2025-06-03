@@ -80,7 +80,9 @@ if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
                     mol = Chem.MolFromSmiles(smiles_string)
                     mol = Chem.AddHs(mol)
                     mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
+
                     peptide_descriptors.append(compute_global_descriptors(mol))
+
             peptide_boltzmann= boltzmann(peptide_descriptors,working_dir,name)
             print(peptide_boltzmann)
             all_records.append(peptide_boltzmann)
@@ -89,66 +91,6 @@ if not os.path.exists(main_dir+'/boltzmann_descriptors.csv'):
     df = pd.DataFrame(all_records)
     df.to_csv(main_dir+'/boltzmann_descriptors.csv', index=False, header=False)
 
-X_22 = []
-data = pd.read_csv(main_dir+'/boltzmann_descriptors.csv',header=None,index_col=None)
-for d in data.values.tolist():
-    X_22.append(d)
-
-X_22 = np.array(X_22)
-os.chdir(main_dir)
-
-Y = X_22[:,13]
-
-with open("all_peptides.smi", "r") as f:
-    smiles_lines = f.readlines()
-    smiles_lines = [line.strip() for line in smiles_lines]
-
-from collections import defaultdict
-name_to_indices = defaultdict(list)
-for i, name in enumerate(smiles_lines):
-    name_to_indices[name].append(i)
-
-indices_to_keep = set()
-for indices in name_to_indices.values():
-    if len(indices) == 1:
-        indices_to_keep.add(indices[0])
-    else:
-        best_index = max(indices, key=lambda x: Y[x])
-        indices_to_keep.add(best_index)
-
-indices_to_remove = [i for i in range(len(X_22)) if i not in indices_to_keep]
-Y = [j for i, j in enumerate(Y) if i not in indices_to_remove]
-
-X_22 =np.delete(X_22,13,1)
-
-X_dihedrals = create_X(main_dir, "BWDihedralNormalized") #ready for input
-X_distances = create_X(main_dir, "BWdistances")
-
-X_dihedrals = X_dihedrals.reshape(len(X_dihedrals), -1)
-X_distances = X_distances.reshape(len(X_distances), -1)
-
-X = np.hstack((X_dihedrals, X_distances,X_22))
-
-X = [j for i, j in enumerate(X) if i not in indices_to_remove]
-X=np.array(X)
-
-
-print(len(X),len(X[0]),len(Y))
-
-
-import matplotlib.pyplot as plt
-
-run_RFR(X,Y)
-
-
-for x in range(X.shape[1]):
-    feature_values = X[:, x]  # shape (N,)
-
-    plt.scatter(feature_values, Y, alpha=0.6)
-    plt.xlabel(f'Feature at index {x}')
-    plt.ylabel('Target variable')
-    plt.title(f'Scatter plot of Feature {x} vs Target')
-    plt.show()
 
 
 

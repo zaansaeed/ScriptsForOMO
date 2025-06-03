@@ -119,4 +119,4 @@ for i in reversed(range(len(X))):
 X = np.array(X)
 
 
-run_RFR(X,Y)
+run_RFR(X,Y,.2)

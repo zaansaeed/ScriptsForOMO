@@ -5,9 +5,11 @@ from rdkit import Chem
 from ML_functions import *
 from natsort import natsorted
 from collections import defaultdict
-
+from rdkit.Chem import Descriptors3D, Descriptors, Crippen, Lipinski
+import inspect
+from ScriptsForOMO.functions import get_amide_distances
 from functions import boltzmann
-from functions import addAmides
+from functions import add_amides
 
 def distance_between_two_atoms(mol,ID1,ID2):
     conf = mol.GetConformer()
@@ -58,7 +60,8 @@ def create_new_descriptor(descriptor_name,directory_of_peptides):
     for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder):
             os.chdir(folder) #currenlty working in Peptide_{name}
-            if not os.path.exists(f"{descriptor_name}.csv"):
+            peptide_name  = folder.split('_')[1]
+            if not os.path.exists(f"{peptide_name}_{descriptor_name}.csv"): #change to/from not
                 working_dir = os.getcwd()
                 name = folder.split("_")[1]
                 smiles_string = open(f"{name}.smi").read().strip()
@@ -67,20 +70,44 @@ def create_new_descriptor(descriptor_name,directory_of_peptides):
                 mol = Chem.MolFromSmiles(smiles_string)
                 mol = Chem.AddHs(mol)
 
-                amideGroups = addAmides(mol)
                 for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
                     if conformation_xyz.endswith('.xyz'):  # working within 1 conformer
                         mol.RemoveAllConformers()
                         mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-
                         #here, put the function of what you want to calcualte for each conformation
-                        peptide_descriptors.append(getAmideDistances(amideGroups,mol))
+                        amideGroups = add_amides(mol)
+                        peptide_descriptors.append(side_chain_descriptors(amideGroups))
 
                 peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
+                print(peptide_boltzmann.shape)
                 peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
+                print(peptide_boltzmann)
                 df = pd.DataFrame(peptide_boltzmann)
-                df.to_csv(f'{descriptor_name}.csv', index=False, header=False)
+                df.to_csv(f'{peptide_name}_{descriptor_name}.csv', index=False, header=False)
             os.chdir(main_dir)
+
+def side_chain_descriptors(amidegroups):
+    descriptors_for_peptide = []
+
+    for amide_group in amidegroups:
+        mol = amide_group.getResidue()[0] #getresidue is (frag_structure, ids of atoms)
+        for atom in mol.GetAtoms():
+            if atom.GetIsAromatic() and not atom.IsInRing():
+                atom.SetIsAromatic(False)
+        Chem.SanitizeMol(mol)
+        results = {
+            "TPSA": Descriptors.TPSA(mol),  # Topological Polar Surface Area
+            "Radius" :Descriptors3D.RadiusOfGyration(mol)
+
+        }
+
+
+        descriptors_for_peptide.append(list(results.values()))
+
+    return descriptors_for_peptide
+
+
+
 
 def smart_parse_token(token: str):
     try:
@@ -119,24 +146,54 @@ def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[li
     percents_all = [j for i,j in enumerate(percents_all) if i not in indices_to_remove]
     return smiles_lines_all, names_lines_all, percents_all
 
+#computes your specified descriptor for each conformation
+def compute_global_descriptors(mol):
+    descriptor_funcs = {
+        "MolWt": Descriptors.MolWt(mol),
+        "HeavyAtomCount": Descriptors.HeavyAtomCount(mol),
+        "BertzCT": Descriptors.BertzCT(mol),
+        "MolLogP": Descriptors.MolLogP(mol),
+        "FractionCSP3": Descriptors.FractionCSP3(mol),
+        "TPSA": Descriptors.TPSA(mol),
+        "NumHDonors": Descriptors.NumHDonors(mol),
+        "NumHAcceptors": Descriptors.NumHAcceptors(mol),
+        "NOCount": Descriptors.NOCount(mol),
+        "NumRotatableBonds": Descriptors.NumRotatableBonds(mol),
+        "Kappa1": Descriptors.Kappa1(mol),
+        "Chi1v": Descriptors.Chi1v(mol),
+        "RingCount": Descriptors.RingCount(mol),
+        "NumAliphaticRings": Descriptors.NumAliphaticRings(mol),
+        "NumAromaticRings": Descriptors.NumAromaticRings(mol),
+        "NumSaturatedRings": Descriptors.NumSaturatedRings(mol),
+        "BalabanJ": Descriptors.BalabanJ(mol),
+        "HallKierAlpha": Descriptors.HallKierAlpha(mol),
+    }
+    return list(descriptor_funcs.values())
 
 def main():
-    main_dir = "/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides"
+    main_dir = "/Users/zaansaeed/Peptides"
     os.chdir(main_dir)
+
+    create_new_descriptor('side_chain_descriptors', main_dir)
+
+
 
     smiles_lines_all = read_file("all_peptides.smi") #list of smiles
     names_lines_all = read_file("all_names.txt") # list of names
     percents_all = read_file("percent6-12-18.txt")# list of lists of percents
-    smiles_lines_all = sort_by_names_alphabetically(names_lines_all,smiles_lines_all) #sorts bynames
+    smiles_lines_all = sort_by_names_alphabetically(names_lines_all,smiles_lines_all) #sorts by names
     percents_all = sort_by_names_alphabetically(names_lines_all,percents_all) #sorts by names
     names_lines_all = sort_by_names_alphabetically(names_lines_all,names_lines_all) #changes order of names_lines, must be last
 
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,"BWdistances")
+    X = create_X(main_dir,names_final,["BWDihedralNormalized"])
+
+
     Y = create_Y(percents_final)
 
+    #print(X.shape)
     ### removal of 1s and 0s
 
     X = X.tolist()
@@ -150,6 +207,7 @@ def main():
     Y = np.array(Y)
     plot_Y_distribution(Y)
     run_RFR(X, Y, 0.3, 5)
+    dummy_RFR(X,Y,0.25)
 
 
 
