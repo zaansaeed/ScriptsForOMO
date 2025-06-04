@@ -11,6 +11,9 @@ from sklearn.svm import SVR
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import make_scorer
 from sklearn.dummy import DummyRegressor
+from sklearn.decomposition import PCA
+from sklearn.ensemble import GradientBoostingRegressor
+
 
 
 
@@ -63,8 +66,8 @@ def create_X(main_dir,names,features): #takes in csv file and reads into array
     for feature in features:
         data = peptide_csv_to_array(main_dir,names,feature)
         X.append(data)
-    X = np.hstack([arr for arr in X])
-    return X
+    X_new = np.hstack([arr for arr in X])
+    return X_new
 
 
 def sort_by_names_alphabetically(names,values) -> list:
@@ -178,15 +181,16 @@ def plot_importances(best_estimator,X,top_n):
 
 def run_RFR(X,Y,test_size,n_splits):
 
+
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size,random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric,greater_is_better=True)
 
     param_grid = {
-        'n_estimators': [75,50],
-        'max_depth': [6,7,8],
+        'n_estimators': [25,75,50],
+        'max_depth': [3,6,7,8,9],
         'max_features': ['sqrt'],
         'min_samples_split': [2,3,4,5],
-        'min_samples_leaf': [1,2,3,4,5],
+        'min_samples_leaf': [1,2,3,4],
         'bootstrap': [True],
 
     }
@@ -242,6 +246,7 @@ def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
     print("mean success rate on cv:", mean_CV_metric/kf.n_splits)
 
 def dummy_RFR(X,Y,test_size):
+
     X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
 
     # Dummy model that always predicts the mean of y_train
@@ -268,28 +273,39 @@ def plot_Y_distribution(Y):
     plt.ylabel('Frequency')
     plt.show()
 
-def run_SVR(X,Y):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2,random_state=41)
+def run_SVR(X,Y,test_size,n_splits):
+
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size,random_state=42)
+    weighted_success_scorer = make_scorer(custom_success_metric,greater_is_better=True)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     param_grid = {
-        'svr__kernel': ['rbf'],
-        'svr__C': [100],
-        'svr__epsilon': [ .1],
+        'kernel': ['rbf','poly'],
+        'C': [100,5,10,1],
+        'epsilon': [ .1,.05],
     }
 
-    svr = SVR(C=1,epsilon=.1,kernel='rbf')
-    grid_search = GridSearchCV(svr, param_grid, scoring='r2', cv=5, n_jobs=-1)
+    svr = SVR()
+    grid_search = GridSearchCV(svr, param_grid, scoring='r2', cv=kf, n_jobs=-1)
     grid_search.fit(X_train, Y_train)
-    best_model = grid_search.best_estimator_
+    best = grid_search.best_estimator_
 
-    y_pred = best_model.predict(X_test)
-    y_pred = np.clip(y_pred, 0, 1)
-
-
-    scores = cross_val_score(best_model, X_train, Y_train, cv=5, scoring='r2')
-    print(f"Mean cross-validation score (Average R2 across 5 cv): {scores.mean()}")
-    print("R2: ", r2_score(Y_test, y_pred))
+    y_pred = best.predict(X_test)
+    print("Best params:", grid_search.best_params_)
     calc_metrics(Y_test, y_pred)
-    plot_results(Y_test, y_pred, svr)
+    test_case = true_errors(Y_test, y_pred)
+    print("\n")
+    print(test_case)
+    print("success rate on test:", custom_success_metric(Y_test, y_pred))
+
+    plot_results(Y_test, y_pred, 'svr')
+    #plot_importances(best_estimator=best, X=X, top_n=10)
+
+    calculate_cv_scores(kf, X_train, Y_train, best)
+
+
+
+
 
 

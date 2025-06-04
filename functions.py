@@ -39,6 +39,7 @@ def waiting_for_file(working_dir,name,wait_time) -> None:
             if new_size == prev_size:
                 break
             prev_size = new_size
+        print(f"waiting... for{name}")
         time.sleep(wait_time)
 
 
@@ -74,7 +75,7 @@ def split_xyz(working_dir,input_file,name) -> None:
 
 
 
-def smile_to_mae(smile_string,name) -> None:
+def smile_to_mae(smile_string,name,working_dir) -> None:
     """
     Converts a SMILES string to Maestro (MAE) format and organizes the output
     into a specific folder structure. This function ensures that the required
@@ -92,20 +93,17 @@ def smile_to_mae(smile_string,name) -> None:
     :return: None
     """
 
-    os.chdir(main_dir)
-    folder_name = "Peptide_"+name
 
-    if not os.path.exists(folder_name):     #if the folder already exists, skip - otherwise continue
-        os.mkdir(folder_name)
-    working_dir = main_dir+'/'+folder_name
     os.chdir(working_dir)
     if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it -contains smile string
         temp_smi = os.path.join(working_dir, f"{name}.smi")
+
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
-        waiting_for_file(working_dir,f"{name}.mae",1) # wait until file is created
+        waiting_for_file(working_dir,f"{name}.mae",30) # wait until file is created
+    print('smile ->mae')
 
     os.chdir(main_dir)
 
@@ -133,7 +131,7 @@ def run_confSearch(name,working_dir) -> None:
             f.write("JOB_TYPE CONFSEARCH\n")
             f.write("CONFSEARCH_METHOD MCMM\n")
             f.write("FORCE_FIELD OPLS_2005\n")
-            f.write("SOLVENT None\n")
+            f.write("SOLVENT Water\n")
             f.write("DIELECTRIC_CONSTANT 1.0\n")
             f.write("CHARGES_FROM Force field\n")
             f.write("CUTOFF None\n")
@@ -147,7 +145,11 @@ def run_confSearch(name,working_dir) -> None:
             f.write("ENERGY_WINDOW 104.6\n")
             f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
 
-    waiting_for_file(working_dir, f"{name}-out.mae",60)
+    if not os.path.exists(f"{name}-out.mae"):
+        subprocess.run([
+            "/opt/schrodinger/suites2024-3/macromodel",
+            f"{name}"        ])
+        waiting_for_file(working_dir, f"{name}-out.mae",300)
 
     print("DONE RUNNING CONFSEARCH")
 
@@ -175,7 +177,7 @@ def mae_to_pdb(name,working_dir) -> None:
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-out.pdb"):
         subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
-        waiting_for_file(working_dir,f"{name}-out.pdb",30)
+        waiting_for_file(working_dir,f"{name}-out.pdb",60)
 
         print("DONE CONVERTING MAE TO PDB")
 
@@ -201,7 +203,7 @@ def pdb_to_xyz(name,working_dir) -> None:
     if not os.path.exists(f"{name}-out.xyz"):
         os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
 
-        waiting_for_file(working_dir,f"{name}-out.xyz",10)
+        waiting_for_file(working_dir,f"{name}-out.xyz",60)
 
         print("DONE CONVERTING PDB TO XYZ")
 
@@ -262,7 +264,7 @@ def extract_energies_to_csv(name,working_dir) -> None:
     """
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-energies.csv"):
-        with open(f"{name}.log", "r") as f:
+        with open(f"{name}_energies.log", "r") as f:
             conformations_list = []
             lines = f.readlines()
             for line in lines:
@@ -334,10 +336,10 @@ class AmideGroup:
     the peptide.
     """
 
-    def __init__(self,atom_ids, group_num, peptide,amide_groups):
+    def __init__(self,IDS, group_num, peptide,amide_groups):
         # Recheck if this is the best way to find N and other IDs, based on how amide groups are found
         self.group_num = group_num
-        self.N = atom_ids[0]
+        self.N = IDS[0]
 
         nitrogen = peptide.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()
@@ -351,7 +353,8 @@ class AmideGroup:
                     if neighbor2.GetSymbol() == 'O':
                         self.C=neighbor.GetIdx()
                         self.O=neighbor2.GetIdx()
-        self.Residue= None
+        self.Residue1= None
+        self.Residue2=None #only the last amide group will have 2 residues
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
 
@@ -375,7 +378,7 @@ class AmideGroup:
                 # PathToSubmol keeps atom indices + conformers
                 frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
-                    self.Residue = (frag_mol,atom_ids)
+                    self.Residue1 = (frag_mol,atom_ids)
         else: # if this is another amide, not the first one
             prev_amide = amide_groups[group_num-2]
             atom1 = prev_amide.getN() #the residue AFTER these atoms
@@ -388,7 +391,7 @@ class AmideGroup:
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
                     bond2 = bond.GetIdx()
             if bond1 == bond2: #trivial case, should never happen
-                self.Residue = None
+                self.Residue1 = None
                 return
             mol_frag = FragmentOnBonds(peptide,[bond1,bond2],addDummies=False)
             frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
@@ -397,19 +400,39 @@ class AmideGroup:
                 # PathToSubmol keeps atom indices + conformers
                 frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
-                    self.Residue = (frag_mol, atom_ids)
+                    self.Residue1 = (frag_mol, atom_ids)
 
-        print(atom1,atom2,atom3,atom4,group_num)
+        if self.group_num == 5:  # check if its the last one after residue1 is estavblished
+            atom1 = self.N
+            atom2 = self.C
+            atom3 = IDS[-1]
+            atom4 = IDS[-3]
+            for bond in peptide.GetBonds():
+                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                    bond1 = bond.GetIdx()
+                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
+                    bond2 = bond.GetIdx()
+            if bond1 == bond2:  # trivial case, should never happen
+                self.Residue2 = None
+                return
+            mol_frag = FragmentOnBonds(peptide, [bond1, bond2], addDummies=False)
+            frags_ids = Chem.GetMolFrags(mol_frag, asMols=False)
+            frags = []
+            for atom_ids in frags_ids:
+                # PathToSubmol keeps atom indices + conformers
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                if self.N in atom_ids:
+                    self.Residue2 = (frag_mol, atom_ids)
 
 
 
 
 
 
-
-    def getResidue(self):
-        return self.Residue
-
+    def getResidue1(self):
+        return self.Residue1
+    def getResidue2(self):
+        return self.Residue2
     def getIDs(self):
         return self.atom_IDs
     def getC(self):
@@ -473,10 +496,10 @@ def add_amides(input_peptide) -> list[AmideGroup]:
                 amide = AmideGroup(match, i, input_peptide,amide_groups)
                 amide_ids = amide.getIDs()
                 if amide_ids not in used_ids:
+
                     amide_groups.append(amide)
                     used_ids.append(amide_ids)
                     i += 1
-
     return amide_groups
 
 

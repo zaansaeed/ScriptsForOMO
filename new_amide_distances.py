@@ -90,7 +90,7 @@ def side_chain_descriptors(amidegroups):
     descriptors_for_peptide = []
 
     for amide_group in amidegroups:
-        mol = amide_group.getResidue()[0] #getresidue is (frag_structure, ids of atoms)
+        mol = amide_group.getResidue1()[0]
         for atom in mol.GetAtoms():
             if atom.GetIsAromatic() and not atom.IsInRing():
                 atom.SetIsAromatic(False)
@@ -100,10 +100,20 @@ def side_chain_descriptors(amidegroups):
             "Radius" :Descriptors3D.RadiusOfGyration(mol)
 
         }
-
-
         descriptors_for_peptide.append(list(results.values()))
+        if amide_group.getResidue2() is not None:## CHECKING THE LAST AMIDE GROUP, IT IS THE ONLY ONE WITH 2 RESIDUES
+            mol = amide_group.getResidue2()[0]
+            for atom in mol.GetAtoms():
+                if atom.GetIsAromatic() and not atom.IsInRing():
+                    atom.SetIsAromatic(False)
+            Chem.SanitizeMol(mol)
+            results = {
+                "TPSA": Descriptors.TPSA(mol),  # Topological Polar Surface Area
+                "Radius": Descriptors3D.RadiusOfGyration(mol)
 
+            }
+            descriptors_for_peptide.append(list(results.values()))
+    print(len(descriptors_for_peptide))
     return descriptors_for_peptide
 
 
@@ -188,7 +198,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,["BWDihedralNormalized"])
+    X = create_X(main_dir,names_final,["BWDihedralNormalized","side_chain_descriptors","BWdistances","NewBWDistances"])
 
 
     Y = create_Y(percents_final)
@@ -206,7 +216,9 @@ def main():
     X = np.array(X)
     Y = np.array(Y)
     plot_Y_distribution(Y)
-    run_RFR(X, Y, 0.3, 5)
+    #run_RFR(X, Y, 0.3, 5)
+    #run_SVR(X,Y,0.3,5)
+    run_light_nn(X,Y,0.3,5)
     dummy_RFR(X,Y,0.25)
 
 
