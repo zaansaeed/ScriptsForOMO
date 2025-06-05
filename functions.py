@@ -264,7 +264,7 @@ def extract_energies_to_csv(name,working_dir) -> None:
     """
     os.chdir(working_dir)
     if not os.path.exists(f"{name}-energies.csv"):
-        with open(f"{name}_energies.log", "r") as f:
+        with open(f"{name}.log", "r") as f:
             conformations_list = []
             lines = f.readlines()
             for line in lines:

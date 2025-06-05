@@ -198,7 +198,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,["BWDihedralNormalized","side_chain_descriptors","BWdistances","NewBWDistances"])
+    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances","side_chain_descriptors"])
 
 
     Y = create_Y(percents_final)
@@ -206,20 +206,47 @@ def main():
     #print(X.shape)
     ### removal of 1s and 0s
 
-    X = X.tolist()
-    Y =Y.tolist()
+    n_bins = 10
+    bin_edges = np.linspace(Y.min(), Y.max(), n_bins + 1)
+    y_bins = np.digitize(Y, bin_edges) - 1  # -1 to make bins 0-indexed
 
-    for i in reversed(range(len(X))):
-        if Y[i] == 0 or Y[i] == 1:
-            del X[i]
-            del Y[i]
+    # Set maximum samples per bin
+    max_per_bin = 5
+    keep_indices = []
+
+    # Process each bin
+    for bin_num in range(n_bins):
+        bin_mask = (y_bins == bin_num)
+        bin_indices = np.where(bin_mask)[0]
+
+        if len(bin_indices) > max_per_bin:
+            # Randomly sample from this bin
+            np.random.seed(42)  # For reproducibility
+            selected_indices = np.random.choice(bin_indices, size=max_per_bin, replace=False)
+        else:
+            # Keep all samples in this bin
+            selected_indices = bin_indices
+
+        keep_indices.extend(selected_indices)
+
+    # Convert to numpy array and sort
+    keep_indices = np.array(keep_indices)
+    keep_indices = np.sort(keep_indices)
+
+    # Create balanced dataset
+    X = X[keep_indices]
+    Y = Y[keep_indices]
     X = np.array(X)
     Y = np.array(Y)
+
+    print(X.shape)
     plot_Y_distribution(Y)
-    #run_RFR(X, Y, 0.3, 5)
-    #run_SVR(X,Y,0.3,5)
-    run_light_nn(X,Y,0.3,5)
-    dummy_RFR(X,Y,0.25)
+    #run_Lasso(X,Y,0.2,5)
+    run_elasticnet(X,Y,0.2,5)
+    #run_SVR(X,Y,0.2,5)
+    #run_NN(X,Y,0.3,5)
+    #run_RFR(X,Y,0.2,5)
+    dummy_RFR(X,Y,0.2)
 
 
 
