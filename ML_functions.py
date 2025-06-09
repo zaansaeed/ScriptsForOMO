@@ -433,53 +433,7 @@ def run_GBR(X, Y, test_size, n_splits):
     plot_importances(best_estimator=best, X=X, top_n=10)
     calculate_cv_scores(kf, X_train, Y_train, best)
 
-from xgboost import XGBRegressor
 
-def run_XGBR(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-    pipeline = Pipeline([
-        ('pca', PCA()),  # Scaling is optional and skipped for trees
-        ('model', XGBRegressor(objective='reg:squarederror', random_state=42, verbosity=0))
-    ])
-
-    param_grid = {
-        'pca__n_components': [ 0.9, 0.95],
-        'model__n_estimators': [75, 100, 125],
-        'model__learning_rate': [0.2, 0.25, 0.3],
-        'model__max_depth': [4, 5],
-        'model__min_child_weight': [ 3, 5, 6],
-        'model__subsample': [0.5, 0.6, 0.8, 1],
-        'model__colsample_bytree': [0.6, 0.8, 1.0],
-        'model__reg_lambda': [1.5, 2, 2.5],
-    }
-
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
-        scoring='r2',  # change to weighted_success_scorer if needed
-        cv=kf,
-        n_jobs=-1,
-        verbose=1
-    )
-
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
-
-    y_pred = best.predict(X_test)
-
-    print("Best params:", grid_search.best_params_)
-    calc_metrics(Y_test, y_pred)
-    test_case = true_errors(Y_test, y_pred)
-    print("\n")
-    print(test_case)
-    print("success rate on test:", custom_success_metric(Y_test, y_pred))
-
-    plot_results(Y_test, y_pred, 'xgboost')
-    plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
-    calculate_cv_scores(kf, X_train, Y_train, best)
 
 
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
@@ -489,10 +443,8 @@ from sklearn.model_selection import GridSearchCV, KFold, train_test_split
 from sklearn.metrics import make_scorer
 
 
-def run_elasticnet(X, Y, test_size, n_splits):
+def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     # Split data
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-
     # Custom scorer, replace with your own function if needed
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
 
@@ -506,11 +458,11 @@ def run_elasticnet(X, Y, test_size, n_splits):
 
     # Hyperparameters grid
     param_grid = {
-        'poly__degree': [1,2,3],
-        'pca__n_components': [0.85,0.9,0.95],
-        'model__alpha': np.linspace(0.1, 0.3, 15),
-        'model__l1_ratio': [0.1, 0.2, 0.3,0.4,0.5,0.6],
-        'model__fit_intercept': [True]
+        'pca__n_components': [0.88,0.90,0.92],  # try different explained-variance cutoffs
+        'poly__degree': [1],  # test up to cubic features
+        'model__alpha': [0.01,0.02,0.03,0.05],  # 1e-4 → 10 on log scale
+        'model__l1_ratio': [0.8,0.9,1.0],  # more elastic-net mixes
+        'model__fit_intercept': [True, False],  # test with/without intercept
     }
 
     # Cross-validation scheme
@@ -527,7 +479,7 @@ def run_elasticnet(X, Y, test_size, n_splits):
     )
 
     # Fit model and search best params
-    grid_search.fit(X_train, Y_train)
+    grid_search.fit(X, Y)
     best = grid_search.best_estimator_
     y_pred = best.predict(X_test)
     y_pred = np.clip(y_pred, 0, 1)
@@ -535,57 +487,19 @@ def run_elasticnet(X, Y, test_size, n_splits):
     # Outputs
     print("Best params:", grid_search.best_params_)
     calc_metrics(Y_test, y_pred)
+    for i in cross_val_score(best,X,Y,cv=kf,scoring='r2'):
+        print(f"R2 score on CV fold: {i:.4f}")
+
     print("Success rate on test:", custom_success_metric(Y_test, y_pred))
     plot_results(Y_test, y_pred, 'elastic net')
-    calculate_cv_scores(kf, X_train, Y_train, best)
+    calculate_cv_scores(kf, X, Y, best)
 
 
 
 
-from sklearn.linear_model import Lasso
 
-def run_Lasso(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
 
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    pipeline = Pipeline([
-        ('scaler', StandardScaler()),
-        ('pca', PCA()),
-        ('model', Lasso(max_iter=10000, random_state=42))
-    ])
-
-    param_grid = {
-        'pca__n_components': [0.9, 0.95,.85],
-        'model__alpha': [0.001, 0.01, 0.1, 0.5, 1.0],
-        'model__fit_intercept': [True, False],
-    }
-
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
-        scoring='r2',
-        cv=kf,
-        n_jobs=-1,
-        verbose=1
-    )
-
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
-
-    y_pred = best.predict(X_test)
-    y_pred = np.clip(y_pred, 0, 1)  # Ensure predictions are in [0, 1]
-
-    print("Best params:", grid_search.best_params_)
-    calc_metrics(Y_test, y_pred)
-    test_case = true_errors(Y_test, y_pred)
-    print("\n")
-    print(test_case)
-    print("success rate on test:", custom_success_metric(Y_test, y_pred))
-
-    plot_results(Y_test, y_pred, 'lasso')
-    calculate_cv_scores(kf, X_train, Y_train, best)
 
 
 

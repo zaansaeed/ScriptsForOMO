@@ -7,7 +7,7 @@ from natsort import natsorted
 from collections import defaultdict
 from rdkit.Chem import Descriptors3D, Descriptors, Crippen, Lipinski
 import inspect
-from ScriptsForOMO.functions import get_amide_distances
+from functions import get_amide_distances
 from functions import boltzmann
 from functions import add_amides
 
@@ -181,7 +181,7 @@ def compute_global_descriptors(mol):
     return list(descriptor_funcs.values())
 
 def main():
-    main_dir = "/Users/zaansaeed/Peptides"
+    main_dir = "/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides"
     os.chdir(main_dir)
 
     create_new_descriptor('side_chain_descriptors', main_dir)
@@ -198,7 +198,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances","side_chain_descriptors"])
+    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
 
 
     Y = create_Y(percents_final)
@@ -211,7 +211,7 @@ def main():
     y_bins = np.digitize(Y, bin_edges) - 1  # -1 to make bins 0-indexed
 
     # Set maximum samples per bin
-    max_per_bin = 5
+    max_per_bin = 6
     keep_indices = []
 
     # Process each bin
@@ -233,16 +233,28 @@ def main():
     keep_indices = np.array(keep_indices)
     keep_indices = np.sort(keep_indices)
 
+    # Ensure test set is separate from training set
+    X_test_indices = np.array([8, 13, 18, 32, 36, 43, 79, 90, 98, 114])
+
+
+    X_test = X[X_test_indices]
+    Y_test = Y[X_test_indices]
+    print(Y_test)
     # Create balanced dataset
     X = X[keep_indices]
     Y = Y[keep_indices]
     X = np.array(X)
+    X_test = np.array(X_test)
     Y = np.array(Y)
+    Y_test = np.array(Y_test)
+
 
     print(X.shape)
-    plot_Y_distribution(Y)
-    #run_Lasso(X,Y,0.2,5)
-    run_elasticnet(X,Y,0.2,5)
+    #plot_Y_distribution(Y)
+
+    run_elasticnet(X,Y, X_test,Y_test,5)
+
+
     #run_SVR(X,Y,0.2,5)
     #run_NN(X,Y,0.3,5)
     #run_RFR(X,Y,0.2,5)
