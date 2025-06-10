@@ -13,6 +13,7 @@ from sklearn.metrics import make_scorer
 from sklearn.dummy import DummyRegressor
 from sklearn.decomposition import PCA
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import LeaveOneOut
 
 
 
@@ -179,8 +180,8 @@ def plot_importances(best_estimator,X,top_n):
     plt.tight_layout()
     plt.show()
 
-def run_RFR(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
+def run_RFR(X, Y, X_test,Y_test, n_splits):
+    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -190,13 +191,12 @@ def run_RFR(X, Y, test_size, n_splits):
     ])
 
     param_grid = {
-        'pca__n_components': [0.95, 0.99, .85],
-        'model__n_estimators': [25, 50, 75],
-        'model__max_depth': [4, 5, 6],
-        'model__max_features': ['sqrt'],
-        'model__min_samples_split': [2, 3],
-        'model__min_samples_leaf': [1, 2],
-        'model__bootstrap': [True],
+        'model__n_estimators': [20, 30, 50],  # Fewer trees
+        'model__max_depth': [3, 5, 8],  # Shallower trees
+        'model__min_samples_split': [5, 10, 15],  # Higher minimum splits
+        'model__min_samples_leaf': [3, 5, 7],  # Higher minimum leaves
+        'model__max_features': ['sqrt', 0.5, 0.3],  # Fewer features per split
+        'pca__n_components': [0.8, 0.9, 0.95]
     }
 
     grid_search = GridSearchCV(
@@ -208,12 +208,16 @@ def run_RFR(X, Y, test_size, n_splits):
         verbose=1
     )
 
-    grid_search.fit(X_train, Y_train)
+    grid_search.fit(X, Y)
     best = grid_search.best_estimator_
 
     y_pred = best.predict(X_test)
     print("Best params:", grid_search.best_params_)
     calc_metrics(Y_test, y_pred)
+    c = cross_val_score(best, X, Y, cv=kf, scoring='r2')
+    for i in c:
+        print(f"R2 score on CV fold: {i:.4f}")
+    print("mean cv R2: ", c.mean())
     test_case = true_errors(Y_test, y_pred)
     print("\n")
     print(test_case)
@@ -222,7 +226,7 @@ def run_RFR(X, Y, test_size, n_splits):
     plot_results(Y_test, y_pred, 'random forest with PCA')
     plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
 
-    calculate_cv_scores(kf, X_train, Y_train, best)
+    calculate_cv_scores(kf, X, Y, best)
 
 def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
     scores = {
@@ -247,18 +251,18 @@ def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
         mean_CV_metric += temp_metric
     print("mean success rate on cv:", mean_CV_metric/kf.n_splits)
 
-def dummy_RFR(X,Y,test_size):
+def dummy_RFR(X,Y,X_test,Y_test):
 
-    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
+   # X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
 
     # Dummy model that always predicts the mean of y_train
     dummy = DummyRegressor(strategy='mean')
-    dummy.fit(X_train, y_train)
+    dummy.fit(X, Y)
 
     # Predict and evaluate
     y_pred = dummy.predict(X_test)
-    print("dummy regressor: ", custom_success_metric(y_test, y_pred))
-    print("dummy r2:", r2_score(y_test, y_pred))
+    print("dummy regressor: ", custom_success_metric(Y_test, y_pred))
+    print("dummy r2:", r2_score(Y_test, y_pred))
 
 def plot_scores_distribution(scores):
     plt.bar(scores.keys(), scores.values())
@@ -276,8 +280,8 @@ def plot_Y_distribution(Y):
     plt.ylabel('Frequency')
     plt.show()
 
-def run_SVR(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
+def run_SVR(X, Y, X_test,Y_test, n_splits):
+    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -288,12 +292,11 @@ def run_SVR(X, Y, test_size, n_splits):
     ])
 
     param_grid = {
-        'pca__n_components': [0.6,0.85, 0.9, 0.95, 0.99],
-        'model__kernel': ['rbf', 'poly'],
-        'model__C': [50, 100],  # Removed very low 0.1
-        'model__epsilon': [0.01, 0.05, 0.1],  # Removed 0.2 which is too wide
-        'model__gamma': [0.01, 0.1, 'scale'],  # More controlled gamma options
-        'model__degree': [4, 3]  # Limit to 2/3 for polynomial kernel to avoid overfitting
+        'model__C': [0.1, 1, 5],  # Lower C values for more regularization
+        'model__epsilon': [0.01, 0.05, 0.1],
+        'model__gamma': [0.001, 0.01, 0.1, 'scale', 'auto'],
+        'model__kernel': ['rbf', 'linear'],  # Add linear kernel
+        'pca__n_components': [0.7, 0.8, 0.9, 0.95]  # Try less dimensionality reduction
     }
 
     grid_search = GridSearchCV(
@@ -305,20 +308,24 @@ def run_SVR(X, Y, test_size, n_splits):
         verbose=1
     )
 
-    grid_search.fit(X_train, Y_train)
+    grid_search.fit(X, Y)
     best = grid_search.best_estimator_
 
     y_pred = best.predict(X_test)
     y_pred = np.clip(y_pred, 0, 1)
     print("Best params:", grid_search.best_params_)
     calc_metrics(Y_test, y_pred)
+    c =cross_val_score(best,X,Y,cv=kf,scoring='r2')
+    for i in c:
+        print(f"R2 score on CV fold: {i:.4f}")
+    print("mean cv R2: ", c.mean())
     test_case = true_errors(Y_test, y_pred)
     print("\n")
     print(test_case)
     print("success rate on test:", custom_success_metric(Y_test, y_pred))
 
     plot_results(Y_test, y_pred, 'svr (PCA + scaled)')
-    calculate_cv_scores(kf, X_train, Y_train, best)
+    calculate_cv_scores(kf, X, Y, best)
 
 
 import numpy as np
@@ -446,28 +453,40 @@ from sklearn.metrics import make_scorer
 def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     # Split data
     # Custom scorer, replace with your own function if needed
+    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
 
     # Pipeline: scaling + ElasticNet
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('pca',PCA()),
-        ('poly', PolynomialFeatures(interaction_only=True)),
+       # ('poly', PolynomialFeatures(interaction_only=True)),
         ('model', ElasticNet(max_iter=40000, random_state=42))
     ])
 
     # Hyperparameters grid
     param_grid = {
-        'pca__n_components': [0.88,0.90,0.92],  # try different explained-variance cutoffs
-        'poly__degree': [1],  # test up to cubic features
-        'model__alpha': [0.01,0.02,0.03,0.05],  # 1e-4 → 10 on log scale
-        'model__l1_ratio': [0.8,0.9,1.0],  # more elastic-net mixes
-        'model__fit_intercept': [True, False],  # test with/without intercept
-    }
+        # ElasticNet regularization - broader range
+        'model__alpha': [ 0.1, 0.12, 0.15, 0.2],
 
+        # L1/L2 ratio - full spectrum
+        'model__l1_ratio': [0.1, 0.25,0.2, 0.3, 0.4, 0.5],
+
+        # PCA components - finer granularity
+        'pca__n_components': [0.9, 0.92, 0.94, 0.95, 0.97, 0.99],
+
+        # Keep intercept
+        'model__fit_intercept': [True],
+
+        # ElasticNet solver options
+        'model__max_iter': [1000],  # In case convergence is an issue
+
+        # Selection criteria
+        'model__selection': [ 'random']  # Coordinate descent selection
+    }
     # Cross-validation scheme
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
+    loo = LeaveOneOut()
     # GridSearchCV setup
     grid_search = GridSearchCV(
         estimator=pipeline,
@@ -487,12 +506,15 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     # Outputs
     print("Best params:", grid_search.best_params_)
     calc_metrics(Y_test, y_pred)
-    for i in cross_val_score(best,X,Y,cv=kf,scoring='r2'):
+    c = cross_val_score(best,X,Y,cv=kf,scoring='r2')
+    print("mean R2 score on CV folds: ",c.mean())
+    for i in c:
         print(f"R2 score on CV fold: {i:.4f}")
 
     print("Success rate on test:", custom_success_metric(Y_test, y_pred))
     plot_results(Y_test, y_pred, 'elastic net')
     calculate_cv_scores(kf, X, Y, best)
+   # plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
 
 
 

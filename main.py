@@ -6,9 +6,10 @@ import functions as fs
 import ML_functions as ML
 from natsort import natsorted
 import numpy as np
+from new_amide_distances import *
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides_Water")
+main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 # Define the working directory (where results will be stored)
@@ -27,20 +28,17 @@ with open(names_input_file, "r") as f:
 
 
 
-update_matrices = 0
+update_matrices = 1
 
 
 for i, name in enumerate(names_lines): #processing : smiles -> xyzs
     if not os.path.exists(main_dir+f"/Peptide_{name}"):
         os.mkdir(main_dir+f"/Peptide_{name}")
     working_dir = main_dir+f"/Peptide_{name}"
-
-
     if update_matrices == 1:
+        print(name)
         fs.boltzmann_weight_energies(name, working_dir,True)
-
     else:
-
         fs.smile_to_mae(smiles_lines[i], name,working_dir)
         fs.run_confSearch(name,working_dir)
         fs.mae_to_pdb(name,working_dir)
@@ -49,7 +47,7 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         fs.extract_energies_to_csv(name,working_dir)
         fs.boltzmann_weight_energies(name,working_dir,False)
 
-fs.extract_boltzmann_weighted_dihedrals_normalized()
+fs.extract_boltzmann_weighted_dihedrals_normalized(main_dir)
 
 
 

@@ -1,6 +1,7 @@
 from array import array
 from tkinter.font import names
 
+import numpy as np
 from rdkit import Chem
 from ML_functions import *
 from natsort import natsorted
@@ -181,10 +182,10 @@ def compute_global_descriptors(mol):
     return list(descriptor_funcs.values())
 
 def main():
-    main_dir = "/Users/zaan/zasaeed@g.hmc.edu - Google Drive/Shared drives/OMO Lab/Projects/OMO Lab - Zaan Saeed/Data/Peptides"
+    main_dir = "/Users/zaansaeed/Peptides"
     os.chdir(main_dir)
 
-    create_new_descriptor('side_chain_descriptors', main_dir)
+    #create_new_descriptor('side_chain_descriptors', main_dir)
 
 
 
@@ -209,7 +210,6 @@ def main():
     n_bins = 10
     bin_edges = np.linspace(Y.min(), Y.max(), n_bins + 1)
     y_bins = np.digitize(Y, bin_edges) - 1  # -1 to make bins 0-indexed
-
     # Set maximum samples per bin
     max_per_bin = 6
     keep_indices = []
@@ -233,32 +233,31 @@ def main():
     keep_indices = np.array(keep_indices)
     keep_indices = np.sort(keep_indices)
 
+    X_test_indices = np.array([8, 13, 44, 79, 75, 98, 90, 94, 65])
     # Ensure test set is separate from training set
-    X_test_indices = np.array([8, 13, 18, 32, 36, 43, 79, 90, 98, 114])
-
-
     X_test = X[X_test_indices]
     Y_test = Y[X_test_indices]
     print(Y_test)
     # Create balanced dataset
     X = X[keep_indices]
     Y = Y[keep_indices]
+
     X = np.array(X)
     X_test = np.array(X_test)
     Y = np.array(Y)
     Y_test = np.array(Y_test)
 
 
-    print(X.shape)
-    #plot_Y_distribution(Y)
+    print(X.shape,Y.shape)
+    plot_Y_distribution(Y)
 
     run_elasticnet(X,Y, X_test,Y_test,5)
+    #run_RFR(X,Y,X_test,Y_test,5)
 
 
-    #run_SVR(X,Y,0.2,5)
+    #run_SVR(X,Y,X_test,Y_test,5)
     #run_NN(X,Y,0.3,5)
-    #run_RFR(X,Y,0.2,5)
-    dummy_RFR(X,Y,0.2)
+    dummy_RFR(X,Y,X_test,Y_test)
 
 
 

@@ -503,7 +503,7 @@ def add_amides(input_peptide) -> list[AmideGroup]:
     return amide_groups
 
 
-def get_amide_distances(amide_groups,atom_coordinates) -> list[list[float]]:
+def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
     """
     Computes the distances between amide groups in a protein structure based on their
     atomic coordinates. This function calculates a pairwise distance matrix where each
@@ -524,6 +524,7 @@ def get_amide_distances(amide_groups,atom_coordinates) -> list[list[float]]:
         for the amide group. For any missing Hydrogen, the distance is -1.0 (e.g., prolines).
     :rtype: list[list[float]]
     """
+
     distance_matrix = [[0.0 for _ in range(len(amide_groups))] for _ in range(len(amide_groups))]
     for i,amid1 in enumerate(amide_groups):
         for j,amid2 in enumerate(amide_groups):
@@ -535,9 +536,11 @@ def get_amide_distances(amide_groups,atom_coordinates) -> list[list[float]]:
                     distance_matrix[i][j] = -1.0 #prolines have no nitrogen Hydrogen, so the distance is non existant
                 else:
                     amid2O = amid2.getO()
-                    amid1H_pos = atom_coordinates[amid1H]
-                    amid2O_pos = atom_coordinates[amid2O]
+                    amid1H_pos = peptide.GetConformer().GetAtomPosition(amid1H)
+                    amid2O_pos = peptide.GetConformer().GetAtomPosition(amid2O)
+                    print(amid1H,amid2O)
                     distance_matrix[i][j] = np.linalg.norm(np.array(amid1H_pos)-np.array(amid2O_pos))
+                    print(distance_matrix[i][j])
     return distance_matrix
 
 
@@ -602,20 +605,20 @@ def boltzmann_weight_energies(name,working_dir, update_matrices) -> None:
     """
 
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
+    if os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
         with open(f"{name}.smi", "r") as f:
             smiles_string = f.readlines()[0]
 
         peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
-        AllChem.EmbedMolecule(peptide)
         amideGroups = add_amides(peptide)
 
         temp_working_dir = working_dir + f"/{name}_Conformations"
         os.chdir(temp_working_dir) #working in conforamtions folder
         distances = []
         for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
-            atom_coordinates = xyz_to_array(f"{temp_working_dir}/{conformation_xyz}")
-            distances.append(get_amide_distances(amideGroups,atom_coordinates))
+            peptide.RemoveAllConformers()
+            peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
+            distances.append(get_amide_distances(amideGroups,peptide))
         os.chdir(working_dir)
 
         boltzmann_matrix = boltzmann(distances, working_dir,name)
@@ -755,10 +758,11 @@ def calculate_dihedrals(residue,mol):
         p4 = mol.GetConformer().GetAtomPosition(residue[7])
         temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
         return temp_dihedrals
+    return
 
 
 
-def extract_boltzmann_weighted_dihedrals_normalized():
+def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
     os.chdir(main_dir)
     for folder in natsorted(os.listdir(main_dir)):
         if os.path.isdir(folder):
@@ -766,7 +770,7 @@ def extract_boltzmann_weighted_dihedrals_normalized():
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             print(name)
-            if not os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+            if  os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 peptide_normalized_dihedrals = []
                 mol = Chem.MolFromSmiles(smiles_string)
