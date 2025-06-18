@@ -17,7 +17,6 @@ from sklearn.model_selection import LeaveOneOut
 
 
 
-
 def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
     print("MSE: ", mse)
@@ -186,17 +185,17 @@ def run_RFR(X, Y, X_test,Y_test, n_splits):
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     pipeline = Pipeline([
-        ('pca', PCA()),
+       # ('pca', PCA()),
         ('model', RandomForestRegressor(random_state=42))
     ])
 
     param_grid = {
-        'model__n_estimators': [20, 30, 50],  # Fewer trees
+        'model__n_estimators': [20, 30, 50,75],  # Fewer trees
         'model__max_depth': [3, 5, 8],  # Shallower trees
         'model__min_samples_split': [5, 10, 15],  # Higher minimum splits
         'model__min_samples_leaf': [3, 5, 7],  # Higher minimum leaves
         'model__max_features': ['sqrt', 0.5, 0.3],  # Fewer features per split
-        'pca__n_components': [0.8, 0.9, 0.95]
+       # 'pca__n_components': [0.8, 0.9, 0.95]
     }
 
     grid_search = GridSearchCV(
@@ -223,10 +222,35 @@ def run_RFR(X, Y, X_test,Y_test, n_splits):
     print(test_case)
     print("success rate on test:", custom_success_metric(Y_test, y_pred))
 
-    plot_results(Y_test, y_pred, 'random forest with PCA')
+    plot_results(Y_test, y_pred, 'random forest ')
     plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
 
     calculate_cv_scores(kf, X, Y, best)
+
+    importances = best.named_steps['model'].feature_importances_
+    # original_features = [f"x{i}" for i in range(X.shape[1])]
+
+    importance_df = pd.DataFrame({
+        "Feature": [f"x{i}" for i in range(X.shape[1])],
+        "Importance": importances
+    }).sort_values(by="Importance", ascending=False)
+
+    print("\nTop 20 Most Important Polynomial Features:")
+    print(importance_df.head(20))
+
+    import seaborn as sns
+
+    # Example for feature 0
+
+    for i in range(X.shape[1]):
+        plt.figure(figsize=(6, 4))
+        sns.regplot(x=X[:, i], y=Y, lowess=True)
+        plt.xlabel(f'Feature {i}')
+        plt.ylabel('Target')
+        plt.title(f'Effect of Feature {i} on Target')
+        plt.grid(True)
+        plt.show()
+
 
 def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
     scores = {
@@ -459,21 +483,18 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     # Pipeline: scaling + ElasticNet
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        ('pca',PCA()),
-       # ('poly', PolynomialFeatures(interaction_only=True)),
         ('model', ElasticNet(max_iter=40000, random_state=42))
     ])
 
     # Hyperparameters grid
     param_grid = {
+
         # ElasticNet regularization - broader range
-        'model__alpha': [ 0.1, 0.12, 0.15, 0.2],
+        'model__alpha': [0.1, 0.15, 0.2, 0.3, 0.5, 1.0],  # Expanded range for regularization
 
         # L1/L2 ratio - full spectrum
-        'model__l1_ratio': [0.1, 0.25,0.2, 0.3, 0.4, 0.5],
+        'model__l1_ratio': [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99],
 
-        # PCA components - finer granularity
-        'pca__n_components': [0.9, 0.92, 0.94, 0.95, 0.97, 0.99],
 
         # Keep intercept
         'model__fit_intercept': [True],
@@ -500,28 +521,54 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     # Fit model and search best params
     grid_search.fit(X, Y)
     best = grid_search.best_estimator_
-    y_pred = best.predict(X_test)
-    y_pred = np.clip(y_pred, 0, 1)
 
     # Outputs
     print("Best params:", grid_search.best_params_)
-    calc_metrics(Y_test, y_pred)
-    c = cross_val_score(best,X,Y,cv=kf,scoring='r2')
-    print("mean R2 score on CV folds: ",c.mean())
-    for i in c:
-        print(f"R2 score on CV fold: {i:.4f}")
+    # Example for feature 0
+    loo = LeaveOneOut()
+    y_true, y_pred = [], []
 
-    print("Success rate on test:", custom_success_metric(Y_test, y_pred))
-    plot_results(Y_test, y_pred, 'elastic net')
-    calculate_cv_scores(kf, X, Y, best)
-   # plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
+    for train_idx, test_idx in loo.split(X):
+        X_train, X_val = X[train_idx], X[test_idx]
+        y_train, y_val = Y[train_idx], Y[test_idx]
 
+        best.fit(X_train, y_train)
+        pred = best.predict(X_val)
+        y_true.append(y_val[0])
+        y_pred.append(pred[0])
 
+    loo_r2 = r2_score(y_true, y_pred)
+    print(f"\nLOO R² score: {loo_r2:.4f}")
+    calc_metrics(y_true, y_pred)
+   # print("Success rate on test:", custom_success_metric(y_true, y_pred))
+    plot_results(y_true, y_pred, 'elastic net')
+    #calculate_cv_scores(kf, X, Y, best)
 
+    importances = np.abs(best.named_steps['model'].coef_)
+    original_features = [f"x{i}" for i in range(X.shape[1])]
 
+    importance_df = pd.DataFrame({
+        "Feature": [f"x{i}" for i in range(X.shape[1])],
+        "Importance": importances
+    }).sort_values(by="Importance", ascending=False)
 
+    print("\nTop 20 Most Important Polynomial Features:")
+    print(importance_df.head(20))
 
+    import seaborn as sns
+    for i in range(X.shape[1]):
+        plt.figure(figsize=(6, 4))
+        sns.regplot(x=X[:, i], y=Y, lowess=True)
+        plt.xlabel(f'Feature {i}')
+        plt.ylabel('Target')
+        plt.title(f'Effect of Feature {i} on Target')
+        plt.grid(True)
+        plt.show()
 
+    from sklearn.inspection import PartialDependenceDisplay
+    for i in range(X.shape[1]):
+        PartialDependenceDisplay.from_estimator(best, X, [i])
+        plt.show()
 
 
 

@@ -76,8 +76,7 @@ def create_new_descriptor(descriptor_name,directory_of_peptides):
                         mol.RemoveAllConformers()
                         mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
                         #here, put the function of what you want to calcualte for each conformation
-                        amideGroups = add_amides(mol)
-                        peptide_descriptors.append(side_chain_descriptors(amideGroups))
+                        peptide_descriptors.append(compute_global_descriptors(mol))
 
                 peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
                 print(peptide_boltzmann.shape)
@@ -160,24 +159,7 @@ def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[li
 #computes your specified descriptor for each conformation
 def compute_global_descriptors(mol):
     descriptor_funcs = {
-        "MolWt": Descriptors.MolWt(mol),
-        "HeavyAtomCount": Descriptors.HeavyAtomCount(mol),
-        "BertzCT": Descriptors.BertzCT(mol),
-        "MolLogP": Descriptors.MolLogP(mol),
-        "FractionCSP3": Descriptors.FractionCSP3(mol),
-        "TPSA": Descriptors.TPSA(mol),
-        "NumHDonors": Descriptors.NumHDonors(mol),
-        "NumHAcceptors": Descriptors.NumHAcceptors(mol),
-        "NOCount": Descriptors.NOCount(mol),
-        "NumRotatableBonds": Descriptors.NumRotatableBonds(mol),
-        "Kappa1": Descriptors.Kappa1(mol),
-        "Chi1v": Descriptors.Chi1v(mol),
-        "RingCount": Descriptors.RingCount(mol),
-        "NumAliphaticRings": Descriptors.NumAliphaticRings(mol),
-        "NumAromaticRings": Descriptors.NumAromaticRings(mol),
-        "NumSaturatedRings": Descriptors.NumSaturatedRings(mol),
-        "BalabanJ": Descriptors.BalabanJ(mol),
-        "HallKierAlpha": Descriptors.HallKierAlpha(mol),
+        "Radius": Descriptors3D.RadiusOfGyration(mol)
     }
     return list(descriptor_funcs.values())
 
@@ -185,7 +167,7 @@ def main():
     main_dir = "/Users/zaansaeed/Peptides"
     os.chdir(main_dir)
 
-    #create_new_descriptor('side_chain_descriptors', main_dir)
+    create_new_descriptor('RadiusOfGyration', main_dir)
 
 
 
@@ -199,8 +181,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
-
+   #X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
 
     Y = create_Y(percents_final)
 
