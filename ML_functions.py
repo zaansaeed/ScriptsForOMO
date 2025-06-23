@@ -20,7 +20,8 @@ from sklearn.model_selection import LeaveOneOut
 def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
     print("MSE: ", mse)
-    print("MAE,", mean_absolute_error(Y_test, y_pred))
+    print("RMSE: ", np.sqrt(mse))
+    print("MAE:", mean_absolute_error(Y_test, y_pred))
     print("R2: ", r2_score(Y_test, y_pred))
 
 
@@ -36,7 +37,7 @@ def plot_results(true_labels_for_testing, y_pred, model):
     plt.title(f"{model} - Peptides")
     plt.xlabel("Peptide Index")
     plt.ylabel("Target Value")
-    plt.ylim(0, 1)
+    plt.ylim(4.25,5.75)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -179,23 +180,25 @@ def plot_importances(best_estimator,X,top_n):
     plt.tight_layout()
     plt.show()
 
-def run_RFR(X, Y, X_test,Y_test, n_splits):
-    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
+def run_RFR(X, Y, n_splits,test_size):
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     pipeline = Pipeline([
-       # ('pca', PCA()),
-        ('model', RandomForestRegressor(random_state=42))
+      ('pca', PCA()),
+        ('model', RandomForestRegressor(random_state=42,oob_score=True))
     ])
 
     param_grid = {
-        'model__n_estimators': [20, 30, 50,75],  # Fewer trees
-        'model__max_depth': [3, 5, 8],  # Shallower trees
-        'model__min_samples_split': [5, 10, 15],  # Higher minimum splits
-        'model__min_samples_leaf': [3, 5, 7],  # Higher minimum leaves
-        'model__max_features': ['sqrt', 0.5, 0.3],  # Fewer features per split
-       # 'pca__n_components': [0.8, 0.9, 0.95]
+        'model__n_estimators': [100],  # Number of trees
+        'model__max_depth': [None],  # Tree depth (None = grow fully)
+        'model__min_samples_split': [2],  # Min samples to split a node
+        'model__min_samples_leaf': [1],  # Min samples at a leaf node
+        'model__max_features': [0.5],  # Feature selection per split
+        'model__bootstrap': [True],  # Bagging or full dataset
+        'model__max_samples': [0.6],  # For bootstrap = True (sampling rows)
+        'pca__n_components': [0.7, 0.8, 0.9, 0.95]
     }
 
     grid_search = GridSearchCV(
@@ -207,25 +210,22 @@ def run_RFR(X, Y, X_test,Y_test, n_splits):
         verbose=1
     )
 
-    grid_search.fit(X, Y)
+    grid_search.fit(X_train, Y_train)
     best = grid_search.best_estimator_
 
-    y_pred = best.predict(X_test)
+    # Outputs
     print("Best params:", grid_search.best_params_)
-    calc_metrics(Y_test, y_pred)
-    c = cross_val_score(best, X, Y, cv=kf, scoring='r2')
-    for i in c:
-        print(f"R2 score on CV fold: {i:.4f}")
-    print("mean cv R2: ", c.mean())
-    test_case = true_errors(Y_test, y_pred)
-    print("\n")
-    print(test_case)
-    print("success rate on test:", custom_success_metric(Y_test, y_pred))
+    cv_scores = cross_val_score(best, X_train,Y_train, cv=kf,scoring='r2')
+    for num in cv_scores:
+        print(f"test result: {num}")
+    print("mean success rate on cv:", cv_scores.mean())
 
+        # Example for feature 0
+    y_pred = best.predict(X_test)
+    calc_metrics(Y_test, y_pred)
     plot_results(Y_test, y_pred, 'random forest ')
     plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
 
-    calculate_cv_scores(kf, X, Y, best)
 
     importances = best.named_steps['model'].feature_importances_
     # original_features = [f"x{i}" for i in range(X.shape[1])]
@@ -235,7 +235,7 @@ def run_RFR(X, Y, X_test,Y_test, n_splits):
         "Importance": importances
     }).sort_values(by="Importance", ascending=False)
 
-    print("\nTop 20 Most Important Polynomial Features:")
+    print("\nTop 20 Most Important  Features:")
     print(importance_df.head(20))
 
     import seaborn as sns
@@ -304,8 +304,8 @@ def plot_Y_distribution(Y):
     plt.ylabel('Frequency')
     plt.show()
 
-def run_SVR(X, Y, X_test,Y_test, n_splits):
-    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
+def run_SVR(X, Y, n_splits,test_size):
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -316,11 +316,7 @@ def run_SVR(X, Y, X_test,Y_test, n_splits):
     ])
 
     param_grid = {
-        'model__C': [0.1, 1, 5],  # Lower C values for more regularization
-        'model__epsilon': [0.01, 0.05, 0.1],
-        'model__gamma': [0.001, 0.01, 0.1, 'scale', 'auto'],
-        'model__kernel': ['rbf', 'linear'],  # Add linear kernel
-        'pca__n_components': [0.7, 0.8, 0.9, 0.95]  # Try less dimensionality reduction
+       # 'pca__n_components': [0.85, 0.90, 0.95, 0.99],
     }
 
     grid_search = GridSearchCV(
@@ -332,24 +328,20 @@ def run_SVR(X, Y, X_test,Y_test, n_splits):
         verbose=1
     )
 
-    grid_search.fit(X, Y)
+    grid_search.fit(X_train, Y_train)
     best = grid_search.best_estimator_
 
-    y_pred = best.predict(X_test)
-    y_pred = np.clip(y_pred, 0, 1)
+    # Outputs
     print("Best params:", grid_search.best_params_)
-    calc_metrics(Y_test, y_pred)
-    c =cross_val_score(best,X,Y,cv=kf,scoring='r2')
-    for i in c:
-        print(f"R2 score on CV fold: {i:.4f}")
-    print("mean cv R2: ", c.mean())
-    test_case = true_errors(Y_test, y_pred)
-    print("\n")
-    print(test_case)
-    print("success rate on test:", custom_success_metric(Y_test, y_pred))
+    cv_scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
+    for num in cv_scores:
+        print(f"test result: {num}")
+    print("mean success rate on cv:", cv_scores.mean())
 
-    plot_results(Y_test, y_pred, 'svr (PCA + scaled)')
-    calculate_cv_scores(kf, X, Y, best)
+    # Example for feature 0
+    y_pred = best.predict(X_test)
+    calc_metrics(Y_test, y_pred)
+    plot_results(Y_test, y_pred, 'svr ')
 
 
 import numpy as np
@@ -474,40 +466,31 @@ from sklearn.model_selection import GridSearchCV, KFold, train_test_split
 from sklearn.metrics import make_scorer
 
 
-def run_elasticnet(X, Y, X_test,Y_test, n_splits):
+def run_elasticnet(X, Y, n_splits,test_size):
     # Split data
     # Custom scorer, replace with your own function if needed
-    #X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
 
     # Pipeline: scaling + ElasticNet
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
+        ('pca', PCA()),
         ('model', ElasticNet(max_iter=40000, random_state=42))
     ])
 
     # Hyperparameters grid
     param_grid = {
-
-        # ElasticNet regularization - broader range
-        'model__alpha': [0.1, 0.15, 0.2, 0.3, 0.5, 1.0],  # Expanded range for regularization
-
-        # L1/L2 ratio - full spectrum
-        'model__l1_ratio': [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99],
-
-
-        # Keep intercept
+        'model__alpha': [0.01, 0.1, 0.2, 0.5, 1.0],
+        'model__l1_ratio': [0.0, 0.1, 0.5, 0.9, 1.0],
         'model__fit_intercept': [True],
-
-        # ElasticNet solver options
-        'model__max_iter': [1000],  # In case convergence is an issue
-
-        # Selection criteria
-        'model__selection': [ 'random']  # Coordinate descent selection
+        'model__selection': ['cyclic', 'random'],
+        'model__max_iter': [50000],
+        'model__tol': [1e-3, 1e-2, 0.1],
+        'pca__n_components': [0.7, 0.8, 0.9, 0.95]
     }
     # Cross-validation scheme
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-    loo = LeaveOneOut()
     # GridSearchCV setup
     grid_search = GridSearchCV(
         estimator=pipeline,
@@ -519,33 +502,25 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     )
 
     # Fit model and search best params
-    grid_search.fit(X, Y)
+    grid_search.fit(X_train, Y_train)
     best = grid_search.best_estimator_
 
     # Outputs
     print("Best params:", grid_search.best_params_)
+    cv_scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
+    for num in cv_scores:
+        print(f"test result: {num}")
+    print("mean success rate on cv:", cv_scores.mean())
+
     # Example for feature 0
-    loo = LeaveOneOut()
-    y_true, y_pred = [], []
+    y_pred = best.predict(X_test)
+    calc_metrics(Y_test, y_pred)
 
-    for train_idx, test_idx in loo.split(X):
-        X_train, X_val = X[train_idx], X[test_idx]
-        y_train, y_val = Y[train_idx], Y[test_idx]
+    plot_results(Y_test, y_pred, 'random forest ')
+    plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
 
-        best.fit(X_train, y_train)
-        pred = best.predict(X_val)
-        y_true.append(y_val[0])
-        y_pred.append(pred[0])
-
-    loo_r2 = r2_score(y_true, y_pred)
-    print(f"\nLOO R² score: {loo_r2:.4f}")
-    calc_metrics(y_true, y_pred)
-   # print("Success rate on test:", custom_success_metric(y_true, y_pred))
-    plot_results(y_true, y_pred, 'elastic net')
-    #calculate_cv_scores(kf, X, Y, best)
-
-    importances = np.abs(best.named_steps['model'].coef_)
-    original_features = [f"x{i}" for i in range(X.shape[1])]
+    importances = best.named_steps['model'].feature_importances_
+    # original_features = [f"x{i}" for i in range(X.shape[1])]
 
     importance_df = pd.DataFrame({
         "Feature": [f"x{i}" for i in range(X.shape[1])],
@@ -556,6 +531,9 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
     print(importance_df.head(20))
 
     import seaborn as sns
+
+    # Example for feature 0
+
     for i in range(X.shape[1]):
         plt.figure(figsize=(6, 4))
         sns.regplot(x=X[:, i], y=Y, lowess=True)
@@ -565,11 +543,15 @@ def run_elasticnet(X, Y, X_test,Y_test, n_splits):
         plt.grid(True)
         plt.show()
 
-    from sklearn.inspection import PartialDependenceDisplay
-    for i in range(X.shape[1]):
-        PartialDependenceDisplay.from_estimator(best, X, [i])
-        plt.show()
 
-
-
-
+def create_Y_ROG(main_dir,names):
+    Y= []
+    for name in names:
+        working_dir = os.path.join(main_dir, f"Peptide_{name}")
+        if os.path.isdir(working_dir):
+            os.chdir(working_dir)
+            for file in os.listdir(working_dir):  # working in folder
+                if file.endswith("RadiusOfGyration.csv"):
+                    data = pd.read_csv(file, header=None, index_col=None)
+                    Y.append(data.values.tolist()[0][0])
+    return np.array(Y)

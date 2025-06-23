@@ -181,13 +181,32 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-   #X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
+    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
 
-    Y = create_Y(percents_final)
-
-    #print(X.shape)
+    Y = create_Y_ROG(main_dir,names_final)
+    print(X.shape,Y.shape)
     ### removal of 1s and 0s
 
+
+
+    print(X.shape,Y.shape)
+    plot_Y_distribution(Y)
+
+    #run_elasticnet(X,Y,5,0.2)
+    #run_RFR(X,Y,5,0.2)
+
+
+    run_SVR(X,Y,5,0.2)
+    #run_NN(X,Y,0.3,5)
+
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+"""
     n_bins = 10
     bin_edges = np.linspace(Y.min(), Y.max(), n_bins + 1)
     y_bins = np.digitize(Y, bin_edges) - 1  # -1 to make bins 0-indexed
@@ -218,7 +237,6 @@ def main():
     # Ensure test set is separate from training set
     X_test = X[X_test_indices]
     Y_test = Y[X_test_indices]
-    print(Y_test)
     # Create balanced dataset
     X = X[keep_indices]
     Y = Y[keep_indices]
@@ -227,27 +245,7 @@ def main():
     X_test = np.array(X_test)
     Y = np.array(Y)
     Y_test = np.array(Y_test)
-
-
-    print(X.shape,Y.shape)
-    plot_Y_distribution(Y)
-
-    run_elasticnet(X,Y, X_test,Y_test,5)
-    #run_RFR(X,Y,X_test,Y_test,5)
-
-
-    #run_SVR(X,Y,X_test,Y_test,5)
-    #run_NN(X,Y,0.3,5)
-    dummy_RFR(X,Y,X_test,Y_test)
-
-
-
-if __name__ == "__main__":
-    main()
-
-
-
-
+"""
 
 
 
