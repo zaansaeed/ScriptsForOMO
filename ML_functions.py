@@ -186,45 +186,45 @@ def run_RFR(X, Y, n_splits,test_size):
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     pipeline = Pipeline([
-      ('pca', PCA()),
-        ('model', RandomForestRegressor(random_state=42,oob_score=True))
+        ('model', RandomForestRegressor(random_state=42))
     ])
 
     param_grid = {
-        'model__n_estimators': [100],  # Number of trees
-        'model__max_depth': [None],  # Tree depth (None = grow fully)
-        'model__min_samples_split': [2],  # Min samples to split a node
-        'model__min_samples_leaf': [1],  # Min samples at a leaf node
-        'model__max_features': [0.5],  # Feature selection per split
-        'model__bootstrap': [True],  # Bagging or full dataset
-        'model__max_samples': [0.6],  # For bootstrap = True (sampling rows)
-        'pca__n_components': [0.7, 0.8, 0.9, 0.95]
+        'model__n_estimators': [150,175,200],
+        'model__max_depth': [12,13,14,15, None],  # None means fully grown trees
+        'model__min_samples_split': [2, 3, 4, 5, 6],
+        'model__min_samples_leaf': [1, 2, 4, 6],
+        'model__max_features': [0.3, 0.5, 0.7, 'sqrt', 'log2'],
+        'model__bootstrap': [True, False],
+        'model__max_samples': [0.6, 0.8, 1.0],  # Only used if bootstrap=True
+        'model__criterion': ['squared_error', 'absolute_error', 'friedman_mse'],
+        'model__max_leaf_nodes': [None, 10, 20, 30, 50],
+        'model__min_impurity_decrease': [ 0.05,0.1],
     }
-
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
+    from sklearn.model_selection import RandomizedSearchCV
+    search = RandomizedSearchCV(
+        estimator=pipeline,  # Your full pipeline with 'model' step
+        param_distributions=param_grid,
+        n_iter=500,  # Number of parameter settings sampled (adjust for speed)
         scoring='r2',
-        cv=kf,
+        cv=kf,  # 5-fold CV (adjust if desired)
+        random_state=42,
         n_jobs=-1,
-        verbose=1
+        verbose=1,
     )
 
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
+    search.fit(X_train, Y_train)
+    best = search.best_estimator_
 
     # Outputs
-    print("Best params:", grid_search.best_params_)
-    cv_scores = cross_val_score(best, X_train,Y_train, cv=kf,scoring='r2')
-    for num in cv_scores:
-        print(f"test result: {num}")
-    print("mean success rate on cv:", cv_scores.mean())
+    print("Best params:", search.best_params_)
+    print("mean cv r2:", search.best_score_)
 
         # Example for feature 0
     y_pred = best.predict(X_test)
     calc_metrics(Y_test, y_pred)
     plot_results(Y_test, y_pred, 'random forest ')
-    plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=10)
+    plot_importances(best_estimator=best.named_steps['model'], X=X, top_n=6)
 
 
     importances = best.named_steps['model'].feature_importances_
@@ -235,21 +235,21 @@ def run_RFR(X, Y, n_splits,test_size):
         "Importance": importances
     }).sort_values(by="Importance", ascending=False)
 
-    print("\nTop 20 Most Important  Features:")
-    print(importance_df.head(20))
+    print("\nTop Most Important  Features:")
+    print(importance_df)
 
     import seaborn as sns
 
     # Example for feature 0
 
-    for i in range(X.shape[1]):
+    """for i in range(X.shape[1]):
         plt.figure(figsize=(6, 4))
         sns.regplot(x=X[:, i], y=Y, lowess=True)
         plt.xlabel(f'Feature {i}')
         plt.ylabel('Target')
         plt.title(f'Effect of Feature {i} on Target')
         plt.grid(True)
-        plt.show()
+        plt.show()"""
 
 
 def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
@@ -309,30 +309,36 @@ def run_SVR(X, Y, n_splits,test_size):
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    pipe = Pipeline([
+    pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        ('pca', PCA()),
         ('model', SVR())
     ])
 
     param_grid = {
-       # 'pca__n_components': [0.85, 0.90, 0.95, 0.99],
+        'model__kernel': ['poly','rbf','linear'],
+        'model__degree': [2, 3, 4, 5],  # Added degree=2 for comparison
+        'model__C': [1, 5, 10, 15, 20, 30],  # Added smaller and larger C values for regularization strength
+        'model__gamma': [0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01],  # Broader gamma search
+        'model__epsilon': [0.01, 0.05, 0.1, 0.15, 0.2],  # Added smaller epsilon for sensitivity
+        'model__coef0': [0.0, 0.3, 0.5, 0.7, 1.0],  # Include zero for no independent term influence
     }
-
-    grid_search = GridSearchCV(
-        estimator=pipe,
-        param_grid=param_grid,
+    from sklearn.model_selection import RandomizedSearchCV
+    search = RandomizedSearchCV(
+        estimator=pipeline,  # Your pipeline with 'model' step as SVR
+        param_distributions=param_grid,
+        n_iter=500,  # Number of parameter settings to sample
         scoring='r2',
-        cv=kf,
+        cv=5,
+        random_state=42,
         n_jobs=-1,
-        verbose=1
+        verbose=2,
     )
 
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
+    search.fit(X_train, Y_train)
+    best = search.best_estimator_
 
     # Outputs
-    print("Best params:", grid_search.best_params_)
+    print("Best params:", search.best_params_)
     cv_scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
     for num in cv_scores:
         print(f"test result: {num}")
@@ -471,46 +477,43 @@ def run_elasticnet(X, Y, n_splits,test_size):
     # Custom scorer, replace with your own function if needed
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-
+    from sklearn.linear_model import Ridge
     # Pipeline: scaling + ElasticNet
     pipeline = Pipeline([
+        ('poly', PolynomialFeatures(degree=1, include_bias=False)),  # change degree later if you want
         ('scaler', StandardScaler()),
-        ('pca', PCA()),
-        ('model', ElasticNet(max_iter=40000, random_state=42))
+        ('model', ElasticNet(random_state=42, max_iter=50000))
     ])
 
-    # Hyperparameters grid
     param_grid = {
-        'model__alpha': [0.01, 0.1, 0.2, 0.5, 1.0],
-        'model__l1_ratio': [0.0, 0.1, 0.5, 0.9, 1.0],
-        'model__fit_intercept': [True],
-        'model__selection': ['cyclic', 'random'],
-        'model__max_iter': [50000],
-        'model__tol': [1e-3, 1e-2, 0.1],
-        'pca__n_components': [0.7, 0.8, 0.9, 0.95]
+        'poly__degree': [1, 2, 3],  # linear up to cubic polynomial features
+        'model__alpha': [1e-5, 1e-4, 1e-3, 0.01, 0.1, 0.3, 0.5, 1.0, 5.0, 10.0],  # wider alpha range
+        'model__l1_ratio': [0.0, 0.1, 0.3, 0.5, 0.7],  # ridge to moderate lasso
+        'model__tol': [1e-5, 1e-4, 1e-3, 1e-2],  # convergence tolerance
+        'model__max_iter': [10000, 20000, 50000],  # more iterations for convergence
+        'model__fit_intercept': [True],  # keep True as your current best
+        'model__selection': ['random', 'cyclic'],  # coordinate descent options
     }
-    # Cross-validation scheme
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     # GridSearchCV setup
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
+    from sklearn.model_selection import RandomizedSearchCV
+
+    search = RandomizedSearchCV(
+        estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
+        param_distributions=param_grid,
+        n_iter=100,  # Number of sampled hyperparameter sets
         scoring='r2',
         cv=kf,
+        random_state=42,
         n_jobs=-1,
-        verbose=1
+        verbose=1,
     )
-
     # Fit model and search best params
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
-
+    search.fit(X_train, Y_train)
+    best = search.best_estimator_
+    print("Best params:", best.get_params())
+    print("mean cv r2:", search.best_score_)
     # Outputs
-    print("Best params:", grid_search.best_params_)
-    cv_scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
-    for num in cv_scores:
-        print(f"test result: {num}")
-    print("mean success rate on cv:", cv_scores.mean())
 
     # Example for feature 0
     y_pred = best.predict(X_test)

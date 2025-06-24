@@ -76,7 +76,8 @@ def create_new_descriptor(descriptor_name,directory_of_peptides):
                         mol.RemoveAllConformers()
                         mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
                         #here, put the function of what you want to calcualte for each conformation
-                        peptide_descriptors.append(compute_global_descriptors(mol))
+                        amide_groups = add_amides(mol)
+                        peptide_descriptors.append(side_chain_descriptors(amide_groups))
 
                 peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
                 print(peptide_boltzmann.shape)
@@ -96,7 +97,7 @@ def side_chain_descriptors(amidegroups):
                 atom.SetIsAromatic(False)
         Chem.SanitizeMol(mol)
         results = {
-            "TPSA": Descriptors.TPSA(mol),  # Topological Polar Surface Area
+            "TPSA": Descriptors.TPSA(mol),
             "Radius" :Descriptors3D.RadiusOfGyration(mol)
 
         }
@@ -108,7 +109,7 @@ def side_chain_descriptors(amidegroups):
                     atom.SetIsAromatic(False)
             Chem.SanitizeMol(mol)
             results = {
-                "TPSA": Descriptors.TPSA(mol),  # Topological Polar Surface Area
+                "TPSA": Descriptors.TPSA(mol),
                 "Radius": Descriptors3D.RadiusOfGyration(mol)
 
             }
@@ -167,7 +168,7 @@ def main():
     main_dir = "/Users/zaansaeed/Peptides"
     os.chdir(main_dir)
 
-    create_new_descriptor('RadiusOfGyration', main_dir)
+    create_new_descriptor('side_chain_descriptors', main_dir)
 
 
 
@@ -181,7 +182,7 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    X = create_X(main_dir,names_final,["BWDihedralNormalized","BWdistances"])
+    X = create_X(main_dir,names_final,["side_chain_descriptors"])
 
     Y = create_Y_ROG(main_dir,names_final)
     print(X.shape,Y.shape)
@@ -193,11 +194,11 @@ def main():
     plot_Y_distribution(Y)
 
     #run_elasticnet(X,Y,5,0.2)
-    #run_RFR(X,Y,5,0.2)
+    run_RFR(X,Y,5,0.20)
 
 
-    run_SVR(X,Y,5,0.2)
-    #run_NN(X,Y,0.3,5)
+    #run_SVR(X,Y,5,0.2)
+    #run_NN(X,Y,0.2,5)
 
 
 
