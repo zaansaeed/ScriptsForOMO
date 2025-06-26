@@ -97,7 +97,17 @@ def side_chain_descriptors(amidegroups):
                 atom.SetIsAromatic(False)
         Chem.SanitizeMol(mol)
         results = {
-            "Radius" :Descriptors3D.RadiusOfGyration(mol)
+            "Radius" :Descriptors3D.RadiusOfGyration(mol),
+            'BertzCT': Descriptors.BertzCT(mol),
+            'HallKierAlpha': Descriptors.HallKierAlpha(mol),
+            'FractionCSP3': Descriptors.FractionCSP3(mol),
+            'Chi0v': Descriptors.Chi0v(mol),
+            'Chi1n': Descriptors.Chi1n(mol),
+            'Kappa1': Descriptors.Kappa1(mol),
+            'MolLogP': Descriptors.MolLogP(mol),
+            'TPSA': Descriptors.TPSA(mol),
+            'MolWt': Descriptors.MolWt(mol),
+            'NumHDonors': Descriptors.NumHDonors(mol),
 
         }
         descriptors_for_peptide.append(list(results.values()))
@@ -108,8 +118,17 @@ def side_chain_descriptors(amidegroups):
                     atom.SetIsAromatic(False)
             Chem.SanitizeMol(mol)
             results = {
-                "Radius": Descriptors3D.RadiusOfGyration(mol)
-
+                "Radius": Descriptors3D.RadiusOfGyration(mol),
+                'BertzCT': Descriptors.BertzCT(mol),
+                'HallKierAlpha': Descriptors.HallKierAlpha(mol),
+                'FractionCSP3': Descriptors.FractionCSP3(mol),
+                'Chi0v': Descriptors.Chi0v(mol),
+                'Chi1n': Descriptors.Chi1n(mol),
+                'Kappa1': Descriptors.Kappa1(mol),
+                'MolLogP': Descriptors.MolLogP(mol),
+                'TPSA': Descriptors.TPSA(mol),
+                'MolWt': Descriptors.MolWt(mol),
+                'NumHDonors': Descriptors.NumHDonors(mol),
             }
             descriptors_for_peptide.append(list(results.values()))
     print(len(descriptors_for_peptide))
@@ -180,18 +199,15 @@ def main():
 
     smiles_final, names_final, percents_final = remove_duplicates(smiles_lines_all,names_lines_all,percents_all) #sorted, with no duplicates
 
-    features = ["side_chain_descriptors","BWdistances"]
+    features = ["side_chain_descriptors"]
 
     X = create_X(main_dir,names_final,features)
     #BWdistances , BWDihedralNormalized, side_chain_descriptors
 
     Y = create_Y_ROG(main_dir,names_final)
     print(X.shape,Y.shape)
-    ### removal of 1s and 0s
 
-
-
-    print(X.shape,Y.shape)
+    os.chdir("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO")
     plot_Y_distribution(Y)
 
     run_elasticnet(X,Y,5,0.2)

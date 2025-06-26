@@ -4,20 +4,23 @@ import matplotlib.pyplot as  plt
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.model_selection import GridSearchCV ,cross_val_score, KFold
+from sklearn.model_selection import GridSearchCV, cross_val_score, KFold, RandomizedSearchCV
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error, \
      f1_score,mean_absolute_error, r2_score
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import make_scorer
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import LeaveOneOut
-from visualization import visualize_model, analyze_feature_ranges,generate_feature_map
+from visualization import visualize_model, analyze_feature_ranges,generate_feature_map, visualize_peptide_and_save_features
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils._testing import ignore_warnings
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
+
+from joblib import dump, load
 
 def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
@@ -173,21 +176,19 @@ def run_RFR(X, Y, n_splits,test_size):
     ])
 
     param_grid = {
-        'model__n_estimators': [100,150,175,200,50],
-        'model__max_depth': [7,12,13,14,15, None],  # None means fully grown trees
-        'model__min_samples_split': [2, 3, 4, 5, 6],
-        'model__min_samples_leaf': [1, 2, 4, 6],
-        'model__max_features': [0.3, 0.5, 0.7, 'sqrt', 'log2'],
+        'model__n_estimators': [125,200,100,150,300],
+        'model__max_depth': [None, 5,6,7,10,12],
+        'model__min_samples_split': [ 3,4,5,6],
+        'model__min_samples_leaf': [1, 2, 4, 6, 10],
         'model__bootstrap': [True],
-        'model__max_samples': [0.6, 0.8, 1.0],  # Only used if bootstrap=True
-        'model__max_leaf_nodes': [None, 10, 20, 30, 50],
+        'model__max_leaf_nodes': [None, 10, 20, 30, 50, 100],
     }
     from sklearn.model_selection import RandomizedSearchCV
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your full pipeline with 'model' step
         param_distributions=param_grid,
         n_iter=200,  # Number of parameter settings sampled (adjust for speed)
-        scoring='r2',
+        scoring='neg_mean_squared_error',
         cv=kf,  # 5-fold CV (adjust if desired)
         random_state=42,
         n_jobs=-1,
@@ -209,13 +210,11 @@ def run_RFR(X, Y, n_splits,test_size):
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
-    print("r2 score:", r2_score(y_true, y_pred))
-        # Example for feature 0
-   # calc_metrics(Y_test, y_pred)
-    plot_results(y_true, y_pred, 'random forest ')
-    visualize_model(best, X, Y)
-    analyze_feature_ranges(best, X, Y)
-
+    calc_metrics(y_true, y_pred)
+    plot_results(y_true, y_pred, 'random_forest ')
+    #dump(best, 'random_forest.joblib')
+    #np.savetxt("X.csv", X, delimiter=",")
+   # np.savetxt("y.csv", Y, delimiter=",")
 
 
 def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
@@ -391,20 +390,26 @@ def run_GBR(X, Y, test_size, n_splits):
         ('model', GradientBoostingRegressor(random_state=42))
     ])
     param_grid = {
-        'model__n_estimators': [100, 120,200,400,500,600],
-        'model__max_depth': [3, 5, 4, 6],
-        'model__max_features': ['sqrt'],
-        'model__min_samples_split': [2, 3, 4, 5],
-        'model__min_samples_leaf': [1, 2, 3, 4],
-        'model__subsample': [0.8, 1.0]
+        'model__n_estimators': [50, 100, 200, 300, 500, 750, 1000],
+        'model__learning_rate': [0.001, 0.01, 0.05, 0.1, 0.2, 0.3],
+        'model__max_depth': [2, 3, 4, 5, 7, 10, 15],
+        'model__min_samples_split': [2, 5, 10, 20],
+        'model__min_samples_leaf': [1, 2, 4, 8, 10],
+        'model__subsample': [0.4, 0.6, 0.8, 1.0],
+        'model__loss': ['squared_error', 'absolute_error', 'huber'],
+        'model__alpha': [0.75, 0.9, 0.95, 0.99],  # For huber + quantile
+        'model__ccp_alpha': [0.0, 0.001, 0.01],  # Post-pruning regularization
+        'model__init': [None],  # You can optionally pre-train with a model
+        'model__validation_fraction': [0.1, 0.2, 0.3]
     }
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    grid_search = GridSearchCV(
+    grid_search = RandomizedSearchCV(
         estimator=pipeline,
-        param_grid=param_grid,
-        scoring='r2',
+        param_distributions=param_grid,
+        scoring='neg_mean_squared_error',
         cv=kf,
+        n_iter=600,
         n_jobs=-1,
         verbose=1
     )
@@ -426,9 +431,9 @@ def run_GBR(X, Y, test_size, n_splits):
     print("\n")
     print(test_case)
 
-    plot_results(Y_test, y_pred, 'gradient boosting')
-    visualize_model(best, X, Y)
-    calculate_cv_scores(kf, X_train, Y_train, best)
+    plot_results(y_true, y_pred, 'gradient boosting')
+    #visualize_model(best, X, Y)
+    #calculate_cv_scores(kf, X_train, Y_train, best)
 
 
 
@@ -440,46 +445,46 @@ def run_elasticnet(X, Y, n_splits,test_size):
     # Split data
     # Custom scorer, replace with your own function if needed
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    from sklearn.linear_model import Ridge
     # Pipeline: scaling + ElasticNet
+    from sklearn.preprocessing import StandardScaler, PolynomialFeatures
     pipeline = Pipeline([
-        ('model', ElasticNet(random_state=42, max_iter=100000))
+        ('model', ElasticNet(max_iter=10000))
     ])
     loo = LeaveOneOut()
     param_grid = {
         # Polynomial expansion (non-linear interactions)
         # ElasticNet regularization strength
-            'model__alpha': [
-        1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3,
-        0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5,
-        0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.5,
-        10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0, 100.0, 200.0, 500.0
-    ],
+        'model__alpha': [
+            1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3,
+            0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5,
+            0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.5,
+            10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0, 100.0, 200.0, 500.0
+        ],
 
-    # ElasticNet L1/L2 mixing - more granular values
-    'model__l1_ratio': [
-        0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
-        0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99, 1.0
-    ],
+        # ElasticNet L1/L2 mixing - more granular values
+        'model__l1_ratio': [
+            0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
+            0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99, 1.0
+        ],
 
-    # Convergence tolerance - expanded with smaller values
-    'model__tol': [
-        1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2
-    ],
+        # Convergence tolerance - expanded with smaller values
+        'model__tol': [
+            1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2
+        ],
 
-    # Max iterations - significantly increased to address convergence
-    'model__max_iter': [
-        1000, 2000, 5000, 10000, 20000, 50000, 100000
-    ],
+        # Max iterations - significantly increased to address convergence
+        'model__max_iter': [
+            1000, 2000, 5000, 10000, 20000, 50000, 100000
+        ],
 
-    # Optimization strategy
-    'model__selection': ['cyclic', 'random'],
+        # Optimization strategy
+        'model__selection': ['cyclic', 'random'],
 
-    # Whether to fit the intercept term
-    'model__fit_intercept': [True, False]
+        # Whether to fit the intercept term
+        'model__fit_intercept': [True, False]
 
     }
+
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     # GridSearchCV setup
     from sklearn.model_selection import RandomizedSearchCV
@@ -487,7 +492,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring='neg_root_mean_squared_error',
+        scoring='neg_mean_squared_error',
         cv=kf,
         n_iter=1000,
         n_jobs=-1,
@@ -496,8 +501,8 @@ def run_elasticnet(X, Y, n_splits,test_size):
     # Fit model and search best params
     search.fit(X_train, Y_train)
     best = search.best_estimator_
-    print("Best params:", best.get_params())
-    #print("mean cv r2:", search.best_score_)
+    print("Best params:", search.best_params_)
+    print("best score:", search.best_score_)
     # Outputs
 
     y_pred = []
@@ -509,17 +514,11 @@ def run_elasticnet(X, Y, n_splits,test_size):
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
     calc_metrics(y_true, y_pred)
+    plot_results(y_true, y_pred, 'elastic net ')
+    #dump(best, 'elasticnet_model.joblib')
+    #np.savetxt("X.csv", X, delimiter=",")
+    #np.savetxt("y.csv", Y, delimiter=",")
 
-
-
-    plot_results(y_true, y_pred, 'random forest ')
-    visualize_model(best,X,Y)
-    _,_,feature_ranges=analyze_feature_ranges(best, X)
-    feature_blocks = [
-        ("side_chain", 6),
-        ("distance", (5, 5)),
-    ]
-    print(generate_feature_map("Hydrogen","Oxygen",feature_blocks,feature_ranges))
 
 def create_Y_ROG(main_dir,names):
     Y= []

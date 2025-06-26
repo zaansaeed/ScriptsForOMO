@@ -2,6 +2,16 @@ from matplotlib import pyplot as plt
 from sklearn.tree import plot_tree
 import pandas as pd
 from natsort import natsorted
+from rdkit.Chem import AllChem, FragmentOnBonds
+from rdkit import Chem
+from functions import add_amides
+import py3Dmol
+import tempfile
+import webbrowser
+import os
+import re
+from joblib import load
+import csv
 
 def visualize_model(pipeline, X, Y):
     model = pipeline.named_steps['model']
@@ -134,6 +144,15 @@ def analyze_feature_ranges(model, X):
         if len(optimal_ranges) > 0:
             plt.axvspan(optimal_ranges.min(), optimal_ranges.max(),
                         alpha=0.2, color='green', label='Optimal Range')
+
+        #bottom 25%
+        threshold = np.percentile(pdp_values, 25)
+        least_optimal_mask = pdp_values <= threshold
+        least_optimal_ranges = feature_values[least_optimal_mask]
+        if len(least_optimal_ranges) > 0:
+            plt.axvspan(least_optimal_ranges.min(), least_optimal_ranges.max(),
+                        alpha=0.2, color='red', label='Least Optimal Range')
+        ##plot
         plt.xlabel(feature_names[idx])
         plt.ylabel('Partial dependence')
         plt.title(f'{feature_names[idx]} (Importance: {importances[idx]:.4f})')
@@ -144,18 +163,28 @@ def analyze_feature_ranges(model, X):
         if idx in top_features_idx:
             print(f"\n{feature_names[idx]}:")
             print(f"Optimal range: [{optimal_ranges.min():.3f}, {optimal_ranges.max():.3f}]")
+            print(f"Least Optimal Range: [{least_optimal_ranges.min():.3f}, {least_optimal_ranges.max():.3f}]")
             print(f"Current data range: [{X[:, idx].min():.3f}, {X[:, idx].max():.3f}]")
             print(f"Mean target value in optimal range: {pdp_values[optimal_mask].mean():.3f}")
+            print(f"Mean target value in least optimal range: {pdp_values[least_optimal_mask].mean():.3f}")
 
         feature_ranges[feature_names[idx]] = {
             "optimal_range": [float(optimal_ranges.min()), float(optimal_ranges.max())],
+            "least_optimal_range": [float(least_optimal_ranges.min()), float(least_optimal_ranges.max())],
             "current_range": [float(X[:, idx].min()), float(X[:, idx].max())],
-            "mean_target": float(pdp_values[optimal_mask].mean()),
+            "mean_target_in_optimal_range": float(pdp_values[optimal_mask].mean()),
+            "mean_target_in_least_optimal_range": float(pdp_values[least_optimal_mask].mean()),
             "importance": float(importances[idx])
+
         }
 
     feature_ranges = dict((k, feature_ranges[k]) for k in natsorted(feature_ranges.keys()))
     return importances, sorted_features, feature_ranges
+
+
+
+
+
 
 
 def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges):
@@ -173,21 +202,134 @@ def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges):
         if isinstance(shape, int):  # 1D array
             for i in range(shape):
                 key = f"{feature_type}_{i+1}"
-                feature_index_map[f"Feature {idx+1} - {key}"] = feature_ranges[f"Feature {idx+1}"]
+                feature_index_map[f"Feature_{idx+1}_{key}"] = feature_ranges[f"Feature {idx+1}"]
                 idx += 1
         elif isinstance(shape, tuple) and len(shape) == 2:  # 2D matrix
             for i in range(shape[0]):
                 for j in range(shape[1]):
-                    key = f"{feature_type} of {atom1} on Amide {i+1} to {atom2} on Amide {j+1}"
-                    feature_index_map[f"Feature {idx + 1} - {key}"] = feature_ranges[f"Feature {idx + 1}"]
+                    key = f"{feature_type}_{atom1}_{i+1}_to_{atom2}_{j+1}"
+                    feature_index_map[f"Feature_{idx + 1}_{key}"] = feature_ranges[f"Feature {idx + 1}"]
                     idx += 1
         else:
             raise ValueError(f"Unsupported shape: {shape}")
 
     return feature_index_map
 
-feature_blocks = [
-    ("Side_Chain", 6),
-    ("Distance", (5, 5)),
-]
 
+def visualize_molecule_with_highlights(mol, highlight_atoms):
+    """
+    Visualizes a 3D molecule and highlights specified atoms by coloring spheres around them.
+
+    Args:
+        mol: RDKit Mol object (with or without 3D conformer).
+        highlight_atoms: List of atom indices (int) to highlight.
+    """
+    mol = Chem.AddHs(mol)
+
+    # Generate 3D coords if needed
+    if mol.GetNumConformers() == 0:
+        if AllChem.EmbedMolecule(mol) != 0:
+            raise RuntimeError("3D embedding failed.")
+        AllChem.UFFOptimizeMolecule(mol)
+
+    mol_block = Chem.MolToMolBlock(mol)
+    viewer = py3Dmol.view(width=2000, height=1000)
+    viewer.addModel(mol_block, 'mol')
+
+    # Style the whole molecule as sticks
+    viewer.setStyle({'stick': {}})
+
+    # Highlight atoms with spheres (red color and some radius)
+    for atom_id in highlight_atoms:
+        viewer.addStyle({'serial': atom_id},  # atom serial numbers start at 1 in py3Dmol
+                        {'sphere': {'radius': 0.7, 'color': 'red', 'opacity': 0.7}})
+
+    if len(highlight_atoms) == 2:
+        atom1 = highlight_atoms[0]
+        atom2 = highlight_atoms[1]
+        # Add bonds between atoms
+        conf = mol.GetConformer()
+        p1 = conf.GetAtomPosition(atom1)
+        p2 = conf.GetAtomPosition(atom2)
+        viewer.addLine({
+            'start': {'x': p1.x, 'y': p1.y, 'z': p1.z},
+            'end': {'x': p2.x, 'y': p2.y, 'z': p2.z},
+            'dashed': True,
+            'color': 'black',
+            'linewidth': 50
+        })
+
+    viewer.zoomTo()
+
+
+    viewer.setBackgroundColor('white')
+
+    # Save to temp file and open in browser
+    html = viewer._make_html()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode='w', encoding='utf-8') as f:
+        f.write(html)
+        temp_path = f.name
+
+    print(f"Opening viewer in browser: {temp_path}")
+    webbrowser.open('file://' + os.path.realpath(temp_path))
+
+
+def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,feature_to_examine):
+    peptide = Chem.MolFromSmiles(arbitrary_peptide_smiles)
+    peptide = Chem.AddHs(peptide)
+    amide_groups = add_amides(peptide)
+    pb = Chem.MolToMolBlock(peptide)
+    feature = [key for key in feature_map if feature_to_examine in key]
+    feature_in_map = feature[0]
+    if "side_chain" in feature_in_map:
+        side_chain_num = int(feature_in_map.split("_")[4])
+        if side_chain_num == 6:
+            group = amide_groups[-1]
+            residue_ids = group.getResidue2()[1]
+            visualize_molecule_with_highlights(peptide,residue_ids)
+        else:
+            group = amide_groups[side_chain_num-1]
+            residue_ids = group.getResidue1()[1]
+            visualize_molecule_with_highlights(peptide,residue_ids)
+    if "distance" in feature_in_map:
+        match = re.search(r'distance_hydrogen_(\d+)_to_oxygen_(\d+)', feature_in_map)
+        if match:
+            h_group_idx = int(match.group(1))
+            o_group_idx = int(match.group(2))
+            hydrogen_id = amide_groups[h_group_idx-1].getH()
+            oxygen_id = amide_groups[o_group_idx-1].getO()
+            visualize_molecule_with_highlights(peptide,[hydrogen_id,oxygen_id])
+
+    all_keys = set(k for sub in feature_map.values() for k in sub)
+    fieldnames = ['Feature'] + sorted(all_keys)
+
+    sorted_items = sorted(feature_map.items(), key=lambda x: x[1].get('importance', 0), reverse=True)
+
+    with open('features_sorted.csv', 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for key, subdict in sorted_items:
+            row = {'Feature': key}
+            # Convert list values to strings
+            for k, v in subdict.items():
+                row[k] = str(v) if isinstance(v, list) else v
+            writer.writerow(row)
+
+def visualize(path_to_model,path_to_X,path_to_y):
+    model = load(path_to_model)
+    X = pd.read_csv(path_to_X).values
+    y = pd.read_csv(path_to_y).values.ravel()
+    visualize_model(model,X,y)
+    _, _, feature_ranges = analyze_feature_ranges(model, X)
+    feature_blocks = [
+        ("side_chain", 6),
+        ("distance", (5, 5)),
+    ]
+    # r1c1
+    smiles = "CC(C)[C@H](C(N[C@H](CCC(OCC=C)=O)C(NC(C)(C)C(N(c(cc(cc1)C(NC)=O)c1N1C)C1=O)=O)=O)=O)N(C)C([C@H](Cc1c[nH]c2c1cccc2)NC(CN(C)C(CCN)=O)=O)=O"
+    feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges)
+    print(feature_map)
+    visualize_peptide_and_save_features(feature_map, smiles, "distance_hydrogen_2_to_oxygen_3")
+
+if __name__ == "__main__":
+    visualize("random_forest.joblib","X.csv","y.csv")
