@@ -187,7 +187,7 @@ def analyze_feature_ranges(model, X):
 
 
 
-def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges):
+def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges,descriptor_funcs):
     """
     feature_blocks: list of tuples
         Each tuple = (feature_type: str, shape: int or (int, int))
@@ -199,12 +199,19 @@ def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges):
     idx = 0
 
     for feature_type, shape in feature_blocks:
-        if isinstance(shape, int):  # 1D array
-            for i in range(shape):
-                key = f"{feature_type}_{i+1}"
-                feature_index_map[f"Feature_{idx+1}_{key}"] = feature_ranges[f"Feature {idx+1}"]
-                idx += 1
-        elif isinstance(shape, tuple) and len(shape) == 2:  # 2D matrix
+        if feature_type=='side_chain':
+            if isinstance(shape,int):
+                for i in range(shape):
+                    key = f"{feature_type}_{i+1}"
+                    feature_index_map[f"Feature_{idx+1}_{key}"] = feature_ranges[f"Feature {idx+1}"]
+                    idx += 1
+            elif isinstance(shape,tuple):
+                for i in range(shape[0]):
+                    for j in descriptor_funcs.keys():
+                        key = f"{feature_type}_{i+1}_property_{j}"
+                        feature_index_map[f"Feature_{idx + 1}_{key}"] = feature_ranges[f"Feature {idx + 1}"]
+                        idx += 1
+        elif feature_type=='distance':  # 2D matrix
             for i in range(shape[0]):
                 for j in range(shape[1]):
                     key = f"{feature_type}_{atom1}_{i+1}_to_{atom2}_{j+1}"
@@ -216,7 +223,7 @@ def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges):
     return feature_index_map
 
 
-def visualize_molecule_with_highlights(mol, highlight_atoms):
+def visualize_molecule_with_highlights(mol, highlight_atoms,feature_name):
     """
     Visualizes a 3D molecule and highlights specified atoms by coloring spheres around them.
 
@@ -243,12 +250,12 @@ def visualize_molecule_with_highlights(mol, highlight_atoms):
     for atom_id in highlight_atoms:
         viewer.addStyle({'serial': atom_id},  # atom serial numbers start at 1 in py3Dmol
                         {'sphere': {'radius': 0.7, 'color': 'red', 'opacity': 0.7}})
+    conf = mol.GetConformer()
 
     if len(highlight_atoms) == 2:
         atom1 = highlight_atoms[0]
         atom2 = highlight_atoms[1]
         # Add bonds between atoms
-        conf = mol.GetConformer()
         p1 = conf.GetAtomPosition(atom1)
         p2 = conf.GetAtomPosition(atom2)
         viewer.addLine({
@@ -258,7 +265,38 @@ def visualize_molecule_with_highlights(mol, highlight_atoms):
             'color': 'black',
             'linewidth': 50
         })
+        midpoint = {
+            'x': (p1.x + p2.x) / 2,
+            'y': (p1.y + p2.y) / 2,
+            'z': (p1.z + p2.z) / 2
+        }
 
+        # Add label at the midpoint
+        viewer.addLabel(feature_name, {
+            'position': midpoint,
+            'fontSize': 16,
+            'backgroundColor': 'black',
+            'fontColor': 'white',
+            'showBackground': True
+        })
+    else:
+        positions = [conf.GetAtomPosition(i) for i in highlight_atoms]
+
+        # Compute centroid (mean of x, y, z)
+        centroid = {
+            'x': sum(p.x for p in positions) / len(positions),
+            'y': sum(p.y for p in positions) / len(positions),
+            'z': sum(p.z for p in positions) / len(positions),
+        }
+
+        # Add one label at the centroid
+        viewer.addLabel(feature_name, {
+            'position': centroid,
+            'fontSize': 16,
+            'backgroundColor': 'darkblue',
+            'fontColor': 'white',
+            'showBackground': True
+        })
     viewer.zoomTo()
 
 
@@ -286,11 +324,11 @@ def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,fea
         if side_chain_num == 6:
             group = amide_groups[-1]
             residue_ids = group.getResidue2()[1]
-            visualize_molecule_with_highlights(peptide,residue_ids)
+            visualize_molecule_with_highlights(peptide,residue_ids,feature_to_examine)
         else:
             group = amide_groups[side_chain_num-1]
             residue_ids = group.getResidue1()[1]
-            visualize_molecule_with_highlights(peptide,residue_ids)
+            visualize_molecule_with_highlights(peptide,residue_ids,feature_to_examine)
     if "distance" in feature_in_map:
         match = re.search(r'distance_hydrogen_(\d+)_to_oxygen_(\d+)', feature_in_map)
         if match:
@@ -298,7 +336,7 @@ def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,fea
             o_group_idx = int(match.group(2))
             hydrogen_id = amide_groups[h_group_idx-1].getH()
             oxygen_id = amide_groups[o_group_idx-1].getO()
-            visualize_molecule_with_highlights(peptide,[hydrogen_id,oxygen_id])
+            visualize_molecule_with_highlights(peptide,[hydrogen_id,oxygen_id],feature_to_examine)
 
     all_keys = set(k for sub in feature_map.values() for k in sub)
     fieldnames = ['Feature'] + sorted(all_keys)
@@ -315,21 +353,21 @@ def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,fea
                 row[k] = str(v) if isinstance(v, list) else v
             writer.writerow(row)
 
-def visualize(path_to_model,path_to_X,path_to_y):
+def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     model = load(path_to_model)
     X = pd.read_csv(path_to_X).values
     y = pd.read_csv(path_to_y).values.ravel()
     visualize_model(model,X,y)
     _, _, feature_ranges = analyze_feature_ranges(model, X)
     feature_blocks = [
-        ("side_chain", 6),
-        ("distance", (5, 5)),
+        ("side_chain", (6,8)),
+        ("distance", (5,5))
     ]
     # r1c1
     smiles = "CC(C)[C@H](C(N[C@H](CCC(OCC=C)=O)C(NC(C)(C)C(N(c(cc(cc1)C(NC)=O)c1N1C)C1=O)=O)=O)=O)N(C)C([C@H](Cc1c[nH]c2c1cccc2)NC(CN(C)C(CCN)=O)=O)=O"
-    feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges)
+    feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges,descriptor_funcs)
     print(feature_map)
-    visualize_peptide_and_save_features(feature_map, smiles, "distance_hydrogen_2_to_oxygen_3")
+    visualize_peptide_and_save_features(feature_map, smiles, "side_chain_6_property_Radius")
 
 if __name__ == "__main__":
-    visualize("random_forest.joblib","X.csv","y.csv")
+    visualize("elasticnet_model.joblib","X.csv","y.csv")

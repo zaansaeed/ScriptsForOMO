@@ -38,11 +38,14 @@ def plot_results(true_labels_for_testing, y_pred, model):
 
     for i, (true_val, pred_val) in enumerate(zip(true_labels_for_testing, y_pred)):
         plt.plot([i, i], [true_val, pred_val], 'k--', alpha=0.6)  # Vertical dashed line
+    all_vals = np.concatenate([true_labels_for_testing, y_pred])
+    ymin = all_vals.min() - 0.1
+    ymax = all_vals.max() + 0.1
+    plt.ylim(ymin, ymax)
 
     plt.title(f"{model} - Peptides")
     plt.xlabel("Peptide Index")
     plt.ylabel("Target Value")
-    plt.ylim(4.25,5.75)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -176,12 +179,14 @@ def run_RFR(X, Y, n_splits,test_size):
     ])
 
     param_grid = {
-        'model__n_estimators': [125,200,100,150,300],
-        'model__max_depth': [None, 5,6,7,10,12],
-        'model__min_samples_split': [ 3,4,5,6],
-        'model__min_samples_leaf': [1, 2, 4, 6, 10],
+        'model__n_estimators': [50, 100, 200, 300, 400, 500, 750],
+        'model__max_depth': [None, 5, 10, 20, 30, 40, 50, 75, 100],
+        'model__min_samples_split': [2, 5, 10, 20, 50],
+        'model__min_samples_leaf': [1, 2, 4, 10, 20],
+        'model__max_features': ['sqrt', 'log2', 0.2, 0.4, 0.6, 0.8, 1.0],
         'model__bootstrap': [True],
-        'model__max_leaf_nodes': [None, 10, 20, 30, 50, 100],
+        'model__max_leaf_nodes': [None, 10, 20, 50, 100],
+        'model__criterion': ['squared_error', 'absolute_error', 'friedman_mse', 'poisson'],
     }
     from sklearn.model_selection import RandomizedSearchCV
     search = RandomizedSearchCV(
@@ -384,23 +389,22 @@ def run_NN(X, Y, test_size, n_splits):
 def run_GBR(X, Y, test_size, n_splits):
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
+    from xgboost import XGBRegressor
 
     pipeline = Pipeline([
-
-        ('model', GradientBoostingRegressor(random_state=42))
+        ('model', XGBRegressor(objective='reg:squarederror', random_state=42, verbosity=0))
     ])
+
     param_grid = {
         'model__n_estimators': [50, 100, 200, 300, 500, 750, 1000],
         'model__learning_rate': [0.001, 0.01, 0.05, 0.1, 0.2, 0.3],
         'model__max_depth': [2, 3, 4, 5, 7, 10, 15],
-        'model__min_samples_split': [2, 5, 10, 20],
-        'model__min_samples_leaf': [1, 2, 4, 8, 10],
+        'model__min_child_weight': [1, 3, 5, 10],
         'model__subsample': [0.4, 0.6, 0.8, 1.0],
-        'model__loss': ['squared_error', 'absolute_error', 'huber'],
-        'model__alpha': [0.75, 0.9, 0.95, 0.99],  # For huber + quantile
-        'model__ccp_alpha': [0.0, 0.001, 0.01],  # Post-pruning regularization
-        'model__init': [None],  # You can optionally pre-train with a model
-        'model__validation_fraction': [0.1, 0.2, 0.3]
+        'model__colsample_bytree': [0.4, 0.6, 0.8, 1.0],
+        'model__gamma': [0, 0.1, 0.3, 0.5, 1.0],  # For pruning
+        'model__reg_alpha': [0.0, 0.001, 0.01, 0.1],  # L1 regularization
+        'model__reg_lambda': [0.0, 0.01, 0.1, 1.0],  # L2 regularization
     }
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
@@ -409,7 +413,7 @@ def run_GBR(X, Y, test_size, n_splits):
         param_distributions=param_grid,
         scoring='neg_mean_squared_error',
         cv=kf,
-        n_iter=600,
+        n_iter=200,
         n_jobs=-1,
         verbose=1
     )
@@ -457,14 +461,11 @@ def run_elasticnet(X, Y, n_splits,test_size):
         'model__alpha': [
             1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3,
             0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5,
-            0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.5,
-            10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0, 100.0, 200.0, 500.0
         ],
 
         # ElasticNet L1/L2 mixing - more granular values
         'model__l1_ratio': [
             0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
-            0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99, 1.0
         ],
 
         # Convergence tolerance - expanded with smaller values
@@ -494,7 +495,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
         param_distributions=param_grid,
         scoring='neg_mean_squared_error',
         cv=kf,
-        n_iter=1000,
+        n_iter=200,
         n_jobs=-1,
         verbose=1,
     )
@@ -515,7 +516,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
         y_true.append(y_test)
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')
-    #dump(best, 'elasticnet_model.joblib')
+   # dump(best, 'elasticnet_model.joblib')
     #np.savetxt("X.csv", X, delimiter=",")
     #np.savetxt("y.csv", Y, delimiter=",")
 
