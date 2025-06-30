@@ -212,7 +212,7 @@ def main():
     #run_SVR(X,Y,5,0.2)
     #run_NN(X,Y,0.2,5)
 
-    #visualize("elasticnet_model.joblib","X.csv","y.csv",descriptor_funcs)
+    visualize("elasticnet_model.joblib","X.csv","y.csv",descriptor_funcs)
 
 if __name__ == "__main__":
     main()

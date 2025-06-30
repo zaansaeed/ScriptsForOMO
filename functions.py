@@ -14,7 +14,7 @@ from natsort import natsorted
 
 
 
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaansaeed/Desktop/NewPeptides")
 
 def waiting_for_file(working_dir,name,wait_time) -> None:
     """
@@ -97,7 +97,6 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
     os.chdir(working_dir)
     if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it -contains smile string
         temp_smi = os.path.join(working_dir, f"{name}.smi")
-
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
@@ -131,7 +130,7 @@ def run_confSearch(name,working_dir) -> None:
             f.write("JOB_TYPE CONFSEARCH\n")
             f.write("CONFSEARCH_METHOD MCMM\n")
             f.write("FORCE_FIELD OPLS_2005\n")
-            f.write("SOLVENT Water\n")
+            f.write("SOLVENT None\n")
             f.write("DIELECTRIC_CONSTANT 1.0\n")
             f.write("CHARGES_FROM Force field\n")
             f.write("CUTOFF None\n")
@@ -353,11 +352,11 @@ class AmideGroup:
                     if neighbor2.GetSymbol() == 'O':
                         self.C=neighbor.GetIdx()
                         self.O=neighbor2.GetIdx()
+
         self.Residue1= None
         self.Residue2=None #only the last amide group will have 2 residues
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
-
         #if group num is 1, then cut bond on Nitrogen, thats residue,
         # cut bond from nitrogen to oxygen and nitrogen to carbon, (second to last id )
         # ('NCC(=O)N'))# normal case, 2 carbons
@@ -370,13 +369,14 @@ class AmideGroup:
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
-            mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
-            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
+            mol_frags = FragmentOnBonds(peptide,[bond1],addDummies=False)
+
+            frags_ids = Chem.GetMolFrags(mol_frags,asMols=False)
 
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
                 if self.C in atom_ids:
                     self.Residue1 = (frag_mol,atom_ids)
         else: # if this is another amide, not the first one
@@ -398,7 +398,7 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
                 if self.C in atom_ids:
                     self.Residue1 = (frag_mol, atom_ids)
 
@@ -538,9 +538,7 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
                     amid2O = amid2.getO()
                     amid1H_pos = peptide.GetConformer().GetAtomPosition(amid1H)
                     amid2O_pos = peptide.GetConformer().GetAtomPosition(amid2O)
-                    print(amid1H,amid2O)
                     distance_matrix[i][j] = np.linalg.norm(np.array(amid1H_pos)-np.array(amid2O_pos))
-                    print(distance_matrix[i][j])
     return distance_matrix
 
 
@@ -605,7 +603,7 @@ def boltzmann_weight_energies(name,working_dir, update_matrices) -> None:
     """
 
     os.chdir(working_dir)
-    if os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
+    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
         with open(f"{name}.smi", "r") as f:
             smiles_string = f.readlines()[0]
 
@@ -770,7 +768,7 @@ def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             print(name)
-            if  os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+            if not os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 peptide_normalized_dihedrals = []
                 mol = Chem.MolFromSmiles(smiles_string)

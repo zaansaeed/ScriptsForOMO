@@ -9,7 +9,7 @@ import numpy as np
 from main import *
 
 schrodinger_path ="/opt/schrodinger/suites2024-3/"
-main_dir = os.path.abspath("/Users/zaansaeed/Peptides")
+main_dir = os.path.abspath("/Users/zaansaeed/Desktop/NewPeptides")
 smiles_input_file = "all_peptides.smi"
 names_input_file = "all_names.txt"
 # Define the working directory (where results will be stored)
@@ -28,7 +28,7 @@ with open(names_input_file, "r") as f:
 
 
 
-update_matrices = 1
+update_matrices = 0
 
 
 for i, name in enumerate(names_lines): #processing : smiles -> xyzs

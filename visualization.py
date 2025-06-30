@@ -367,7 +367,7 @@ def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     smiles = "CC(C)[C@H](C(N[C@H](CCC(OCC=C)=O)C(NC(C)(C)C(N(c(cc(cc1)C(NC)=O)c1N1C)C1=O)=O)=O)=O)N(C)C([C@H](Cc1c[nH]c2c1cccc2)NC(CN(C)C(CCN)=O)=O)=O"
     feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges,descriptor_funcs)
     print(feature_map)
-    visualize_peptide_and_save_features(feature_map, smiles, "side_chain_6_property_Radius")
+    visualize_peptide_and_save_features(feature_map, smiles, "distance_hydrogen_4_to_oxygen_1")
 
 if __name__ == "__main__":
     visualize("elasticnet_model.joblib","X.csv","y.csv")

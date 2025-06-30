@@ -14,7 +14,7 @@ from sklearn.metrics import make_scorer
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import LeaveOneOut
-from visualization import visualize_model, analyze_feature_ranges,generate_feature_map, visualize_peptide_and_save_features
+from visualization import visualize_model, analyze_feature_ranges,generate_feature_map, visualize_peptide_and_save_features,visualize
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils._testing import ignore_warnings
 from sklearn.linear_model import ElasticNet
@@ -459,8 +459,8 @@ def run_elasticnet(X, Y, n_splits,test_size):
         # Polynomial expansion (non-linear interactions)
         # ElasticNet regularization strength
         'model__alpha': [
-            1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3,
-            0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5,
+            5e-5, 1e-4, 5e-4, 1e-3, 5e-3,
+            0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.21,0.19, 0.18,0.17, 0.25, 0.3, 0.4, 0.5,
         ],
 
         # ElasticNet L1/L2 mixing - more granular values
@@ -470,7 +470,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
 
         # Convergence tolerance - expanded with smaller values
         'model__tol': [
-            1e-8, 1e-7, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2
+            0.0001,0.0005,0.0003
         ],
 
         # Max iterations - significantly increased to address convergence
@@ -516,11 +516,9 @@ def run_elasticnet(X, Y, n_splits,test_size):
         y_true.append(y_test)
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')
-   # dump(best, 'elasticnet_model.joblib')
-    #np.savetxt("X.csv", X, delimiter=",")
-    #np.savetxt("y.csv", Y, delimiter=",")
-
-
+    dump(best, 'elasticnet_model.joblib')
+    np.savetxt("X.csv", X, delimiter=",")
+    np.savetxt("y.csv", Y, delimiter=",")
 def create_Y_ROG(main_dir,names):
     Y= []
     for name in names:
