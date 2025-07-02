@@ -57,7 +57,7 @@ def create_new_descriptor(descriptor_name,directory_of_peptides,descriptor_funcs
         if os.path.isdir(folder):
             os.chdir(folder) #currenlty working in Peptide_{name}
             peptide_name  = folder.split('_')[1]
-            if os.path.exists(f"{peptide_name}_{descriptor_name}.csv"): #change to/from not
+            if not os.path.exists(f"{peptide_name}_{descriptor_name}.csv"): #change to/from not
                 working_dir = os.getcwd()
                 name = folder.split("_")[1]
                 smiles_string = open(f"{name}.smi").read().strip()
@@ -171,6 +171,8 @@ def main():
         "Eccentricity": Descriptors3D.Eccentricity,
         "Asphericity": Descriptors3D.Asphericity,
         "SpherocityIndex": Descriptors3D.SpherocityIndex,
+        "MolWt": Descriptors.MolWt,
+        "NumRotatableBonds": Descriptors.NumRotatableBonds,
     }
 
 
@@ -199,7 +201,7 @@ def main():
     os.chdir("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO")
     plot_Y_distribution(Y)
 
-    #run_elasticnet(X,Y,5,0.2)
+    run_elasticnet(X,Y,5,0.2)
     #run_RFR(X,Y,5,0.20)
     #run_GBR(X,Y,0.2,5)
 

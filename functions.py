@@ -420,16 +420,17 @@ class AmideGroup:
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
-            mol_frags = FragmentOnBonds(peptide,[bond1],addDummies=False)
+            mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
 
-            frags_ids = Chem.GetMolFrags(mol_frags,asMols=False)
+            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
 
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
                     self.Residue1 = (frag_mol,atom_ids)
+                    break
         else: # if this is another amide, not the first one
             prev_amide = amide_groups[group_num-2]
             atom1 = prev_amide.getN() #the residue AFTER these atoms
@@ -449,9 +450,11 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
+
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
                     self.Residue1 = (frag_mol, atom_ids)
+                    break
 
         if self.group_num == 5:  # check if its the last one after residue1 is estavblished
             atom1 = self.N
@@ -471,9 +474,10 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
+                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.N in atom_ids:
                     self.Residue2 = (frag_mol, atom_ids)
+                    break
 
 
 
@@ -655,28 +659,28 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
 
     os.chdir(working_dir)
     names = get_split_files()
-    for name in names:
-        if not os.path.exists(f"{og_name}-BWdistances.csv"):
-            with open(f"{og_name}.smi", "r") as f:
-                smiles_string = f.readlines()[0]
 
-            peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
-            amideGroups = add_amides(peptide)
+    if os.path.exists(f"{og_name}-BWdistances.csv"):
+        with open(f"{og_name}.smi", "r") as f:
+            smiles_string = f.readlines()[0]
 
-            temp_working_dir = working_dir + f"/{og_name}_Conformations"
-            os.chdir(temp_working_dir) #working in conforamtions folder
-            distances = []
-            for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
-                peptide.RemoveAllConformers()
-                peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
-                distances.append(get_amide_distances(amideGroups,peptide))
-            os.chdir(working_dir)
+        peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
+        amideGroups = add_amides(peptide)
 
-            boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
+        temp_working_dir = working_dir + f"/{og_name}_Conformations"
+        os.chdir(temp_working_dir) #working in conforamtions folder
+        distances = []
+        for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
+            peptide.RemoveAllConformers()
+            peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
+            distances.append(get_amide_distances(amideGroups,peptide))
+        os.chdir(working_dir)
+
+        boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
 
 
-            df = pd.DataFrame(boltzmann_matrix)
-            df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
+        df = pd.DataFrame(boltzmann_matrix)
+        df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
 
 
 
