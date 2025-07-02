@@ -12,9 +12,7 @@ from sklearn.svm import SVR
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import make_scorer
 from sklearn.dummy import DummyRegressor
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import LeaveOneOut
-from visualization import visualize_model, analyze_feature_ranges,generate_feature_map, visualize_peptide_and_save_features,visualize
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils._testing import ignore_warnings
 from sklearn.linear_model import ElasticNet
@@ -60,6 +58,7 @@ def peptide_csv_to_array(main_dir,names,feature):
             for file in os.listdir(working_dir):  # working in folder
                 if file.endswith(f"{feature}.csv"):
                     data = pd.read_csv(file, header=None, index_col=None)
+
                     if feature == "BWDihedralNormalized":  # remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
                         data = np.array(data)
                         data = data[:, :-1]
@@ -521,9 +520,9 @@ def run_elasticnet(X, Y, n_splits,test_size):
         y_true.append(y_test)
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')
-    dump(best, 'elasticnet_model.joblib')
-    np.savetxt("X.csv", X, delimiter=",")
-    np.savetxt("y.csv", Y, delimiter=",")
+    #dump(best, 'elasticnet_model.joblib')
+    #np.savetxt("X.csv", X, delimiter=",")
+    #np.savetxt("y.csv", Y, delimiter=",")
 def create_Y_ROG(main_dir,names):
     Y= []
     for name in names:

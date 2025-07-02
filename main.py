@@ -1,17 +1,11 @@
-from array import array
-from tkinter.font import names
-
-import numpy as np
 from rdkit import Chem
 from ML_functions import *
 from natsort import natsorted
 from collections import defaultdict
-from rdkit.Chem import Descriptors3D, Descriptors, Crippen, Lipinski
-import inspect
-from functions import get_amide_distances
-from functions import boltzmann_weighted_average
+from rdkit.Chem import Descriptors3D, Descriptors
 from functions import add_amides
 from visualization import visualize
+from functions import boltzmann_weighted_average
 
 def distance_between_two_atoms(mol,ID1,ID2):
     conf = mol.GetConformer()
@@ -63,7 +57,7 @@ def create_new_descriptor(descriptor_name,directory_of_peptides,descriptor_funcs
         if os.path.isdir(folder):
             os.chdir(folder) #currenlty working in Peptide_{name}
             peptide_name  = folder.split('_')[1]
-            if not os.path.exists(f"{peptide_name}_{descriptor_name}.csv"): #change to/from not
+            if os.path.exists(f"{peptide_name}_{descriptor_name}.csv"): #change to/from not
                 working_dir = os.getcwd()
                 name = folder.split("_")[1]
                 smiles_string = open(f"{name}.smi").read().strip()
@@ -79,7 +73,8 @@ def create_new_descriptor(descriptor_name,directory_of_peptides,descriptor_funcs
                         amide_groups = add_amides(mol)
                         peptide_descriptors.append(side_chain_descriptors(amide_groups,descriptor_funcs))
 
-                peptide_boltzmann = boltzmann(peptide_descriptors,working_dir,name)
+
+                peptide_boltzmann = boltzmann_weighted_average(peptide_descriptors,working_dir,name)
                 print(peptide_boltzmann.shape)
                 peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
                 print(peptide_boltzmann)
@@ -167,6 +162,7 @@ def main():
     main_dir = "/Users/zaansaeed/Peptides"
     os.chdir(main_dir)
     descriptor_funcs = {
+        # Your original descriptors
         "Radius": Descriptors3D.RadiusOfGyration,
         "BertzCT": Descriptors.BertzCT,
         "Kappa1": Descriptors.Kappa1,
@@ -174,10 +170,8 @@ def main():
         "TPSA": Descriptors.TPSA,
         "Eccentricity": Descriptors3D.Eccentricity,
         "Asphericity": Descriptors3D.Asphericity,
-        "SpherocityIndex": Descriptors3D.SpherocityIndex
+        "SpherocityIndex": Descriptors3D.SpherocityIndex,
     }
-
-
 
 
     create_new_descriptor('side_chain_descriptors', main_dir,descriptor_funcs)
@@ -199,20 +193,20 @@ def main():
     X = create_X(main_dir,names_final,features)
     #BWdistances , BWDihedralNormalized, side_chain_descriptors
 
-    Y = create_Y("percents.txt")
+    Y = create_Y_ROG(main_dir,names_final)
     print(X.shape,Y.shape)
 
     os.chdir("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO")
     plot_Y_distribution(Y)
 
-    run_elasticnet(X,Y,5,0.2)
+    #run_elasticnet(X,Y,5,0.2)
     #run_RFR(X,Y,5,0.20)
     #run_GBR(X,Y,0.2,5)
 
     #run_SVR(X,Y,5,0.2)
     #run_NN(X,Y,0.2,5)
 
-    visualize("elasticnet_model.joblib","X.csv","y.csv",descriptor_funcs)
+    #visualize("elasticnet_model.joblib","X.csv","y.csv",descriptor_funcs)
 
 if __name__ == "__main__":
     main()

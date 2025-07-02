@@ -306,6 +306,7 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
 
     for name in names:
         log_file = f"{name}.log"
+        print(log_file)
 
         # Extract energies directly from .log file
         with open(log_file, "r") as f:
@@ -822,7 +823,7 @@ def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
             working_dir = os.getcwd()
             name = folder.split("_")[1]
             print(name)
-            if not os.path.exists(f"{name}-BWdihedrals.csv") or not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+            if not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
                 smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
                 peptide_normalized_dihedrals = []
                 mol = Chem.MolFromSmiles(smiles_string)
@@ -899,13 +900,18 @@ def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
 
 def boltzmann_weighted_average(values, working_dir, name):
     # Load total energies
-    energy_df = pd.read_csv(os.path.join(working_dir, f'{name}_total_energies.csv'))
-    energy_dict = dict(zip(energy_df['Name'], energy_df['Energy']))
+    pattern = os.path.join(working_dir, f"*{name}*energies*.csv")
+    matching_files = glob.glob(pattern)
+    filepath = matching_files[0]
+    energy_df = pd.read_csv(filepath)
+
+    first_col = energy_df.columns[0]  # Get the name of the first column dynamically
+    second_col = energy_df.columns[1]
+
+    energy_dict = dict(zip(energy_df[first_col], energy_df[second_col]))
 
     energy_dict = natsorted(energy_dict.items(), key=lambda x: x[0])
-
     energy_vals = np.array([x[1] for x in energy_dict])
-
     # Boltzmann weighting
     R = 8.314e-3  # kJ/mol·K
     T = 298       # K

@@ -1,8 +1,7 @@
 from matplotlib import pyplot as plt
-from sklearn.tree import plot_tree
 import pandas as pd
 from natsort import natsorted
-from rdkit.Chem import AllChem, FragmentOnBonds
+from rdkit.Chem import AllChem
 from rdkit import Chem
 from functions import add_amides
 import py3Dmol
