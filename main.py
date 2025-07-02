@@ -9,7 +9,7 @@ from collections import defaultdict
 from rdkit.Chem import Descriptors3D, Descriptors, Crippen, Lipinski
 import inspect
 from functions import get_amide_distances
-from functions import boltzmann
+from functions import boltzmann_weighted_average
 from functions import add_amides
 from visualization import visualize
 
@@ -199,7 +199,7 @@ def main():
     X = create_X(main_dir,names_final,features)
     #BWdistances , BWDihedralNormalized, side_chain_descriptors
 
-    Y = create_Y_ROG(main_dir,names_final)
+    Y = create_Y("percents.txt")
     print(X.shape,Y.shape)
 
     os.chdir("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO")

@@ -39,11 +39,11 @@ def waiting_for_file(working_dir,name,wait_time) -> None:
             if new_size == prev_size:
                 break
             prev_size = new_size
-        print(f"waiting... for{name}")
+        print(f"waiting... for {name}")
         time.sleep(wait_time)
 
 
-def split_xyz(working_dir,input_file,name) -> None:
+def split_xyz(working_dir,input_file,name,counter) -> int:
     """
     Splits a single XYZ file containing all conformation coordinates into
     separate XYZ files, each representing one conformation.
@@ -57,6 +57,7 @@ def split_xyz(working_dir,input_file,name) -> None:
     :return: None
 
     """
+    temp_count = counter-1
     with open(input_file, "r") as f:
         lines = f.readlines()
     with open(input_file, "r") as f:
@@ -69,9 +70,11 @@ def split_xyz(working_dir,input_file,name) -> None:
                 break
             conformations.append(lines)
     for i, conf in enumerate(conformations):
-        output_file = os.path.join(working_dir, f"{name}_Conformation_{i + 1}.xyz")
+        output_file = os.path.join(working_dir, f"{name}_Conformation_{temp_count}.xyz")
+        temp_count+=1
         with open(output_file, "w") as f:
             f.writelines(conf)
+    return temp_count
 
 
 
@@ -93,6 +96,18 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
     :return: None
     """
 
+    def split_mae_structconvert(mae_file, structconvert_path):
+        base_name = os.path.splitext(mae_file)[0]
+        output_prefix = base_name + "_model.mae"
+
+        subprocess.run([
+            structconvert_path,
+            "-split-nstructures", "1",
+            mae_file,
+            output_prefix
+        ], check=True)
+
+        print(f"Split files created with prefix {output_prefix}_*.mae")
 
     os.chdir(working_dir)
     if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it -contains smile string
@@ -101,11 +116,23 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
             temp_file.write(f"{smile_string}\n")
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
-        waiting_for_file(working_dir,f"{name}.mae",30) # wait until file is created
+        waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
+
+        split_mae_structconvert(f"{name}.mae","/opt/schrodinger/suites2024-3/utilities/structconvert") #split the .mae file into multiple files, one for each model
+        #if tat exists
+
+
     print('smile ->mae')
 
     os.chdir(main_dir)
 
+
+
+import glob
+def get_split_files():
+    files = glob.glob("*_model*.mae")
+    filtered = [f for f in files if "out" not in f]
+    return sorted([os.path.splitext(f)[0] for f in filtered])
 
 def run_confSearch(name,working_dir) -> None:
     """
@@ -123,32 +150,33 @@ def run_confSearch(name,working_dir) -> None:
     """
     os.chdir(working_dir)
 
-    if not os.path.exists(name): #if the conf search file does not exist, we will create it.
-        conf_search_file = os.path.join(working_dir, f"{name}")
-        with open(conf_search_file, "w") as f:
-            f.write(f"INPUT_STRUCTURE_FILE {name}.mae\n")
-            f.write("JOB_TYPE CONFSEARCH\n")
-            f.write("CONFSEARCH_METHOD MCMM\n")
-            f.write("FORCE_FIELD OPLS_2005\n")
-            f.write("SOLVENT None\n")
-            f.write("DIELECTRIC_CONSTANT 1.0\n")
-            f.write("CHARGES_FROM Force field\n")
-            f.write("CUTOFF None\n")
-            f.write("MINI_METHOD PRCG\n")
-            f.write("MAXIMUM_ITERATION 2500\n")
-            f.write("CONVERGE_ON Gradient\n")
-            f.write("CONVERGENCE_THRESHOLD 0.05\n")
-            f.write("OUTCONFS_PER_SEARCH 10000\n")
-            f.write("CONFSEARCH_STEPS 1000\n")
-            f.write("CONFSEARCH_STEPS_PER_ROTATABLE 100\n")
-            f.write("ENERGY_WINDOW 104.6\n")
-            f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
-
-    if not os.path.exists(f"{name}-out.mae"):
-        subprocess.run([
-            "/opt/schrodinger/suites2024-3/macromodel",
-            f"{name}"        ])
-        waiting_for_file(working_dir, f"{name}-out.mae",300)
+    split_files = get_split_files()
+    for file in split_files:
+        if not os.path.exists(file):  # if the conf search file does not exist, we will create it.
+            conf_search_file = os.path.join(working_dir, f"{file}")
+            with open(conf_search_file, "w") as f:
+                f.write(f"INPUT_STRUCTURE_FILE {file}.mae\n")
+                f.write("JOB_TYPE CONFSEARCH\n")
+                f.write("CONFSEARCH_METHOD MCMM\n")
+                f.write("FORCE_FIELD OPLS_2005\n")
+                f.write("SOLVENT None\n")
+                f.write("DIELECTRIC_CONSTANT 1.0\n")
+                f.write("CHARGES_FROM Force field\n")
+                f.write("CUTOFF None\n")
+                f.write("MINI_METHOD PRCG\n")
+                f.write("MAXIMUM_ITERATION 2500\n")
+                f.write("CONVERGE_ON Gradient\n")
+                f.write("CONVERGENCE_THRESHOLD 0.05\n")
+                f.write("OUTCONFS_PER_SEARCH 10000\n")
+                f.write("CONFSEARCH_STEPS 1000\n")
+                f.write("CONFSEARCH_STEPS_PER_ROTATABLE 100\n")
+                f.write("ENERGY_WINDOW 104.6\n")
+                f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
+        if not os.path.exists(f"{file}-out.mae"):
+            subprocess.run([
+                "/opt/schrodinger/suites2024-3/macromodel",
+                f"{file}"])
+            waiting_for_file(working_dir, f"{file}-out.mae", 120)
 
     print("DONE RUNNING CONFSEARCH")
 
@@ -174,11 +202,14 @@ def mae_to_pdb(name,working_dir) -> None:
     #convert to pdb
 
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-out.pdb"):
-        subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{name}-out.mae",f"{name}-out.pdb"])
-        waiting_for_file(working_dir,f"{name}-out.pdb",60)
 
-        print("DONE CONVERTING MAE TO PDB")
+    split_files = get_split_files()
+    for file in split_files:
+        if not os.path.exists(f"{file}-out.pdb"):
+            subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{file}-out.mae", f"{file}-out.pdb"])
+            waiting_for_file(working_dir, f"{file}-out.pdb", 30)
+
+    print("DONE CONVERTING MAE TO PDB")
 
     os.chdir(main_dir)
 
@@ -199,17 +230,20 @@ def pdb_to_xyz(name,working_dir) -> None:
     """
     #convert to xyz
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-out.xyz"):
-        os.system(f"obabel -ipdb {name}-out.pdb -O {name}-out.xyz")
+    split_files = get_split_files()
+    for f in split_files:
+        if not os.path.exists(f"{f}-out.xyz"):
+            os.system(f"obabel -ipdb {f}-out.pdb -O {f}-out.xyz")
 
-        waiting_for_file(working_dir,f"{name}-out.xyz",60)
+            waiting_for_file(working_dir,f"{f}-out.xyz",15)
 
-        print("DONE CONVERTING PDB TO XYZ")
+
+    print("DONE CONVERTING PDB TO XYZ")
 
     os.chdir(main_dir)
 
 
-def xyz_to_individual_xyz(name,working_dir) -> None:
+def xyz_to_individual_xyz(og_name,working_dir) -> None:
     """
     Converts a combined XYZ file to individual XYZ files and saves them in a newly
     created directory named after the provided name followed by "_Conformations".
@@ -226,18 +260,22 @@ def xyz_to_individual_xyz(name,working_dir) -> None:
     :return: None
     """
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}_Conformations"): #create folder with all conforamtions
-        os.mkdir(f"{name}_Conformations")
-        temp_working_dir = working_dir + f"/{name}_Conformations"
-        os.chdir(temp_working_dir)
-        split_xyz(temp_working_dir,working_dir+f"/{name}-out.xyz",name)
-
+    split_files = get_split_files()
+    conf_counter=1
+    if not os.path.exists(f"{og_name}_Conformations"):  # create folder with all conforamtions
+        os.mkdir(f"{og_name}_Conformations")
+        temp_working_dir = working_dir + f"/{og_name}_Conformations"
+        for f in split_files:
+            os.chdir(temp_working_dir)
+            num_confs = split_xyz(temp_working_dir,working_dir+f"/{f}-out.xyz",og_name,conf_counter)
+            conf_counter+=num_confs
+        os.chdir(working_dir)
         print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
 
     os.chdir(main_dir)
 
 
-def extract_energies_to_csv(name,working_dir) -> None:
+def extract_energies_to_csv(og_name,working_dir) -> None:
     """
     Extracts energy values from a log file and saves them into a CSV file. Processes
     each line in a specified log file to identify and extract conformation energy
@@ -262,22 +300,34 @@ def extract_energies_to_csv(name,working_dir) -> None:
     :rtype: None
     """
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-energies.csv"):
-        with open(f"{name}.log", "r") as f:
-            conformations_list = []
-            lines = f.readlines()
-            for line in lines:
-                if "Conformation " in line: #should be consistent across any log file generated
-                    conformations_list.append(line.split()[3])
-        df = pd.DataFrame(conformations_list, columns=["Energies"])
-        num_energies = len(df)
-        row_labels = [f"Conformation{i}" for i in range(1,num_energies+1)]
-        df.index =row_labels
-        df.to_csv(f"{name}-energies.csv")
+    names = get_split_files()
+    all_energies = []
+    conf_counter = 1
 
-        print("DONE EXTRACTING ENERGIES")
+    for name in names:
+        log_file = f"{name}.log"
+
+        # Extract energies directly from .log file
+        with open(log_file, "r") as f:
+            for line in f:
+                if "Conformation " in line:
+                    try:
+                        energy = float(line.split()[3])  # adjust if different column
+                        all_energies.append((f"{og_name}_Conformation_{conf_counter}", energy))
+                        conf_counter += 1
+                    except ValueError:
+                        continue
+
+    # Sort by energy
+    all_energies.sort(key=lambda x: x[1])
+
+    # Save to total_energies.csv
+    df = pd.DataFrame(all_energies, columns=["Name", "Energy"])
+    df.to_csv(f"{og_name}_total_energies.csv", index=False)
+
 
     os.chdir(main_dir)
+
 
 
 
@@ -420,7 +470,7 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
+                frag_mol = Chem.PathToSubmol(peptide, atom_ids, useQuery=False)
                 if self.N in atom_ids:
                     self.Residue2 = (frag_mol, atom_ids)
 
@@ -577,7 +627,7 @@ def xyz_to_array(xyz_file) -> list[list[float]]:
     return coordinates
 
 
-def boltzmann_weight_energies(name,working_dir, update_matrices) -> None:
+def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     """
     Calculate and store the Boltzmann-weighted energies based on molecular conformations.
 
@@ -603,27 +653,31 @@ def boltzmann_weight_energies(name,working_dir, update_matrices) -> None:
     """
 
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWdistances.csv") or update_matrices:
-        with open(f"{name}.smi", "r") as f:
-            smiles_string = f.readlines()[0]
+    names = get_split_files()
+    for name in names:
+        if not os.path.exists(f"{og_name}-BWdistances.csv"):
+            with open(f"{og_name}.smi", "r") as f:
+                smiles_string = f.readlines()[0]
 
-        peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
-        amideGroups = add_amides(peptide)
+            peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
+            amideGroups = add_amides(peptide)
 
-        temp_working_dir = working_dir + f"/{name}_Conformations"
-        os.chdir(temp_working_dir) #working in conforamtions folder
-        distances = []
-        for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
-            peptide.RemoveAllConformers()
-            peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
-            distances.append(get_amide_distances(amideGroups,peptide))
-        os.chdir(working_dir)
+            temp_working_dir = working_dir + f"/{og_name}_Conformations"
+            os.chdir(temp_working_dir) #working in conforamtions folder
+            distances = []
+            for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
+                peptide.RemoveAllConformers()
+                peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
+                distances.append(get_amide_distances(amideGroups,peptide))
+            os.chdir(working_dir)
 
-        boltzmann_matrix = boltzmann(distances, working_dir,name)
+            boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
 
 
-        df = pd.DataFrame(boltzmann_matrix)
-        df.to_csv(working_dir+f'/{name}-BWdistances.csv', index=False, header=False)
+            df = pd.DataFrame(boltzmann_matrix)
+            df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
+
+
 
     os.chdir(main_dir)
 
@@ -829,7 +883,7 @@ def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
 
 
                 #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
-                boltzmann_matrix = boltzmann(peptide_normalized_dihedrals, working_dir,name)
+                boltzmann_matrix = boltzmann_weighted_average(peptide_normalized_dihedrals, working_dir,name)
 
 
                 boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
@@ -843,30 +897,27 @@ def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
 
 
 
-def boltzmann(values, working_dir,name):
-    '''
+def boltzmann_weighted_average(values, working_dir, name):
+    # Load total energies
+    energy_df = pd.read_csv(os.path.join(working_dir, f'{name}_total_energies.csv'))
+    energy_dict = dict(zip(energy_df['Name'], energy_df['Energy']))
 
-    :param values:
-    :param working_dir:
-    :param name:
-    :return:
-    '''
-    energies = pd.read_csv(os.path.join(working_dir, f'{name}-energies.csv'))
-    energy_vals = energies['Energies'].values
-    print(energy_vals[0])
+    energy_dict = natsorted(energy_dict.items(), key=lambda x: x[0])
 
+    energy_vals = np.array([x[1] for x in energy_dict])
+
+    # Boltzmann weighting
     R = 8.314e-3  # kJ/mol·K
-    T = 298  # Kelvin
-
+    T = 298       # K
     weights = np.exp(-energy_vals / (R * T))
-    weights = weights / np.sum(weights)  # Normalize weights
+    weights /= np.sum(weights)
 
+    # Weighted sum
     weighted_sum = np.zeros_like(values[0], dtype=float)
     for i, arr in enumerate(values):
         weighted_sum += weights[i] * np.array(arr)
 
     return weighted_sum
-
 
 
 

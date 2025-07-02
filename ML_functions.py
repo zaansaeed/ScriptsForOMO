@@ -89,8 +89,13 @@ def sort_by_names_alphabetically(names,values) -> list:
 
 def create_Y(percents) -> np.array:
     Y =[]
-    for string_percent in percents:
-        Y.append(string_percent[0]/(string_percent[0]+string_percent[1]+string_percent[2]))
+    if percents == "percents.txt":
+        with open(percents) as f:
+            for line in f:
+                Y.append(float(line.split()[0]))
+    else:
+        for string_percent in percents:
+            Y.append(string_percent[0]/(string_percent[0]+string_percent[1]+string_percent[2]))
     return np.array(Y)
 
 

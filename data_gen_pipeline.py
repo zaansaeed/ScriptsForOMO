@@ -39,6 +39,7 @@ for i, name in enumerate(names_lines): #processing : smiles -> xyzs
         print(name)
         fs.boltzmann_weight_energies(name, working_dir,True)
     else:
+        print(name)
         fs.smile_to_mae(smiles_lines[i], name,working_dir)
         fs.run_confSearch(name,working_dir)
         fs.mae_to_pdb(name,working_dir)
