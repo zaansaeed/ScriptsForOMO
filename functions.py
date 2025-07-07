@@ -12,7 +12,7 @@ import math
 import numpy as np
 from natsort import natsorted
 
-
+from ScriptsForOMO.visualization import visualize_molecule_with_highlights
 
 main_dir = os.path.abspath("/Users/zaansaeed/Desktop/NewPeptides")
 
@@ -114,6 +114,9 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
         temp_smi = os.path.join(working_dir, f"{name}.smi")
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
+        ##add hydrogens
+        subprocess.run(["obabel", "-ismi", f"{name}.smi", "-osmi", "-O", f"{name}.smi", "-xh", "-h"],check=True)
+
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
@@ -122,7 +125,7 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
         #if tat exists
 
 
-    print('smile ->mae')
+        print('smile ->mae')
 
     os.chdir(main_dir)
 
@@ -178,7 +181,7 @@ def run_confSearch(name,working_dir) -> None:
                 f"{file}"])
             waiting_for_file(working_dir, f"{file}-out.mae", 120)
 
-    print("DONE RUNNING CONFSEARCH")
+        print("DONE RUNNING CONFSEARCH")
 
     os.chdir(main_dir)
 
@@ -208,8 +211,9 @@ def mae_to_pdb(name,working_dir) -> None:
         if not os.path.exists(f"{file}-out.pdb"):
             subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{file}-out.mae", f"{file}-out.pdb"])
             waiting_for_file(working_dir, f"{file}-out.pdb", 30)
-
-    print("DONE CONVERTING MAE TO PDB")
+        if not os.path.exists(f"{file}-out-template.pdb"):
+            create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
+        print("DONE CONVERTING MAE TO PDB")
 
     os.chdir(main_dir)
 
@@ -238,7 +242,7 @@ def pdb_to_xyz(name,working_dir) -> None:
             waiting_for_file(working_dir,f"{f}-out.xyz",15)
 
 
-    print("DONE CONVERTING PDB TO XYZ")
+        print("DONE CONVERTING PDB TO XYZ")
 
     os.chdir(main_dir)
 
@@ -267,7 +271,7 @@ def xyz_to_individual_xyz(og_name,working_dir) -> None:
         temp_working_dir = working_dir + f"/{og_name}_Conformations"
         for f in split_files:
             os.chdir(temp_working_dir)
-            num_confs = split_xyz(temp_working_dir,working_dir+f"/{f}-out.xyz",og_name,conf_counter)
+            num_confs = split_xyz(temp_working_dir,working_dir+f"/{f}-out.xyz",f,conf_counter)
             conf_counter+=num_confs
         os.chdir(working_dir)
         print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
@@ -376,6 +380,7 @@ def bfs_traversal(mol, starting_id) -> list[int]:
             bfs_nitrogens.append(id)
     return bfs_nitrogens
 
+
 class AmideGroup:
     """
     Represents an amide group within a peptide, including its atomic components and relationships.
@@ -388,13 +393,13 @@ class AmideGroup:
 
     def __init__(self,IDS, group_num, peptide,amide_groups):
         # Recheck if this is the best way to find N and other IDs, based on how amide groups are found
+
         self.group_num = group_num
         self.N = IDS[0]
 
         nitrogen = peptide.GetAtomWithIdx(self.N)
         neighbors = nitrogen.GetNeighbors()
         hydrogen_id = None
-
         for neighbor in neighbors:
             if neighbor.GetSymbol() == 'H':
                 hydrogen_id = neighbor.GetIdx()
@@ -405,7 +410,7 @@ class AmideGroup:
                         self.O=neighbor2.GetIdx()
 
         self.Residue1= None
-        self.Residue2=None #only the last amide group will have 2 residues
+        self.Residue2= None #only the last amide group will have 2 residues
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
         #if group num is 1, then cut bond on Nitrogen, thats residue,
@@ -427,9 +432,8 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
-                    self.Residue1 = (frag_mol,atom_ids)
+                    self.Residue1 = atom_ids
                     break
         else: # if this is another amide, not the first one
             prev_amide = amide_groups[group_num-2]
@@ -450,37 +454,23 @@ class AmideGroup:
             frags = []
             for atom_ids in frags_ids:
                 # PathToSubmol keeps atom indices + conformers
-
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.C in atom_ids:
-                    self.Residue1 = (frag_mol, atom_ids)
+                    self.Residue1 = atom_ids
                     break
 
-        if self.group_num == 5:  # check if its the last one after residue1 is estavblished
+        if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  # check if its the last one after residue1 is estavblished
             atom1 = self.N
             atom2 = self.C
-            atom3 = IDS[-1]
-            atom4 = IDS[-3]
+
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
-                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
-                    bond2 = bond.GetIdx()
-            if bond1 == bond2:  # trivial case, should never happen
-                self.Residue2 = None
-                return
-            mol_frag = FragmentOnBonds(peptide, [bond1, bond2], addDummies=False)
+            mol_frag = FragmentOnBonds(peptide, [bond1], addDummies=False)
             frags_ids = Chem.GetMolFrags(mol_frag, asMols=False)
-            frags = []
             for atom_ids in frags_ids:
-                # PathToSubmol keeps atom indices + conformers
-                frag_mol = Chem.PathToSubmol(mol_frag, atom_ids, useQuery=False)
                 if self.N in atom_ids:
-                    self.Residue2 = (frag_mol, atom_ids)
+                    self.Residue2 = atom_ids
                     break
-
-
-
 
 
 
@@ -498,6 +488,7 @@ class AmideGroup:
         return self.N
     def getH(self):
         return self.H
+
 
 
 def find_n_terminus(input_peptide) -> int:
@@ -539,8 +530,8 @@ def add_amides(input_peptide) -> list[AmideGroup]:
     amide_groups, used_ids = [],[]
     matches1 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)N'))# normal case, 2 carbons
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))# abnormal case, 3 carbons
-    matches = matches1 + matches2
-
+    matches3 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)O')) # C terminus
+    matches = matches1 + matches2 + matches3
     n_terminus = find_n_terminus(input_peptide)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
 
@@ -551,7 +542,6 @@ def add_amides(input_peptide) -> list[AmideGroup]:
                 amide = AmideGroup(match, i, input_peptide,amide_groups)
                 amide_ids = amide.getIDs()
                 if amide_ids not in used_ids:
-
                     amide_groups.append(amide)
                     used_ids.append(amide_ids)
                     i += 1
@@ -596,7 +586,41 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
                     distance_matrix[i][j] = np.linalg.norm(np.array(amid1H_pos)-np.array(amid2O_pos))
     return distance_matrix
 
+def generate_peptide_with_hydrogens_from_pdb(peptide,pdb_file):
+    num_atoms = peptide.GetNumAtoms()
+    with open(pdb_file, 'r') as f:
+        lines = f.read().split('\n')
+        conect_data = [line.split() for line in lines if "CONECT" in line]
+    conect_dict = {}
 
+    editable_peptide = Chem.EditableMol(peptide)
+    for atom in peptide.GetAtoms():
+        print(atom.GetIdx(),atom.GetSymbol())
+    for line in conect_data:
+        key = int(line[1])-1
+        values = [int(v) - 1 for v in line[2:]]  # Subtract 1 from each value
+        if key in conect_dict:
+            conect_dict[key].update(values)
+        else:
+            conect_dict[key] = set(values)
+    conect_dict = dict(sorted(conect_dict.items()))
+    print(conect_dict)
+    for atom, connected_atoms in conect_dict.items():
+        if atom >= num_atoms:
+            hydrogen_atom = Chem.Atom(1)
+            hydrogen_atom_idx = editable_peptide.AddAtom(hydrogen_atom)
+            for heavy_atom_idx in connected_atoms:
+                editable_peptide.AddBond(heavy_atom_idx, hydrogen_atom_idx, Chem.BondType.SINGLE)
+
+
+    peptide = editable_peptide.GetMol()
+    for atom in peptide.GetAtoms():
+        print(atom.GetIdx(),atom.GetSymbol())
+        print("neighbors: ")
+        for neighbor in atom.GetNeighbors():
+            print(neighbor.GetIdx(),neighbor.GetSymbol())
+        print(" ")
+    return peptide
 ##ENSURE THIS WORKS
 def xyz_to_array(xyz_file) -> list[list[float]]:
     """
@@ -660,12 +684,25 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     os.chdir(working_dir)
     names = get_split_files()
 
-    if os.path.exists(f"{og_name}-BWdistances.csv"):
-        with open(f"{og_name}.smi", "r") as f:
-            smiles_string = f.readlines()[0]
+    if not os.path.exists(f"{og_name}-BWdistances.csv"):
+        #add smiles thing
+        with open(f"{og_name}.smi","r") as f:
+            lines = f.readlines()
+            smiles = lines[0].split()[0]
 
-        peptide = Chem.AddHs(Chem.MolFromSmiles(smiles_string))
-        amideGroups = add_amides(peptide)
+        peptide = Chem.MolFromSmiles(smiles)
+        editable_mol = Chem.EditableMol(peptide)
+        hydrogen_indices = [atom.GetIdx() for atom in peptide.GetAtoms() if atom.GetSymbol() == 'H']
+        for idx in sorted(hydrogen_indices, reverse=True):
+            editable_mol.RemoveAtom(idx)
+
+        peptide = editable_mol.GetMol()
+
+        peptide = generate_peptide_with_hydrogens_from_pdb(peptide,f"{names[0]}-out-template.pdb")
+        visualize_molecule_with_highlights(peptide,[],"")
+        #amideGroups = add_amides(peptide)
+        for amide in amideGroups:
+            print(amide.getIDs(),amide.group_num,amide.getH())
 
         temp_working_dir = working_dir + f"/{og_name}_Conformations"
         os.chdir(temp_working_dir) #working in conforamtions folder
@@ -674,6 +711,7 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
             peptide.RemoveAllConformers()
             peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
             distances.append(get_amide_distances(amideGroups,peptide))
+            print(conformation_xyz,distances)
         os.chdir(working_dir)
 
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
@@ -691,6 +729,33 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
 
 ################################################
 ################################################
+def create_template_model(input_pdb, output_pdb):
+    with open(input_pdb, 'r') as infile:
+        lines = infile.readlines()
+
+    first_model = []
+    conect_lines = []
+    inside_model = False
+
+    for line in lines:
+        if line.startswith("MODEL"):
+            inside_model = True
+        if inside_model:
+            first_model.append(line)
+        if line.startswith("ENDMDL") and inside_model:
+            break
+    for line in lines:
+        if line.startswith("CONECT"):
+            conect_lines.append(line)
+
+
+    # Append CONECT lines to the end of the first model
+    first_model += conect_lines
+
+    with open(output_pdb, 'w') as outfile:
+        outfile.writelines(first_model)
+
+    print(f"✅ First model with CONECT lines written to '{output_pdb}'")
 
 def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
     """

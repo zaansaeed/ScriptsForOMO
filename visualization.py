@@ -3,7 +3,6 @@ import pandas as pd
 from natsort import natsorted
 from rdkit.Chem import AllChem
 from rdkit import Chem
-from functions import add_amides
 import py3Dmol
 import tempfile
 import webbrowser
@@ -230,7 +229,6 @@ def visualize_molecule_with_highlights(mol, highlight_atoms,feature_name):
         mol: RDKit Mol object (with or without 3D conformer).
         highlight_atoms: List of atom indices (int) to highlight.
     """
-    mol = Chem.AddHs(mol)
 
     # Generate 3D coords if needed
     if mol.GetNumConformers() == 0:
@@ -279,23 +277,25 @@ def visualize_molecule_with_highlights(mol, highlight_atoms,feature_name):
             'showBackground': True
         })
     else:
-        positions = [conf.GetAtomPosition(i) for i in highlight_atoms]
+        if len(highlight_atoms) != 0:
 
-        # Compute centroid (mean of x, y, z)
-        centroid = {
-            'x': sum(p.x for p in positions) / len(positions),
-            'y': sum(p.y for p in positions) / len(positions),
-            'z': sum(p.z for p in positions) / len(positions),
-        }
+            positions = [conf.GetAtomPosition(i) for i in highlight_atoms]
 
-        # Add one label at the centroid
-        viewer.addLabel(feature_name, {
-            'position': centroid,
-            'fontSize': 16,
-            'backgroundColor': 'darkblue',
-            'fontColor': 'white',
-            'showBackground': True
-        })
+            # Compute centroid (mean of x, y, z)
+            centroid = {
+                'x': sum(p.x for p in positions) / len(positions),
+                'y': sum(p.y for p in positions) / len(positions),
+                'z': sum(p.z for p in positions) / len(positions),
+            }
+
+            # Add one label at the centroid
+            viewer.addLabel(feature_name, {
+                'position': centroid,
+                'fontSize': 16,
+                'backgroundColor': 'darkblue',
+                'fontColor': 'white',
+                'showBackground': True
+            })
     viewer.zoomTo()
 
 
@@ -322,11 +322,11 @@ def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,fea
         side_chain_num = int(feature_in_map.split("_")[4])
         if side_chain_num == 6:
             group = amide_groups[-1]
-            residue_ids = group.getResidue2()[1]
+            residue_ids = group.getResidue2()
             visualize_molecule_with_highlights(peptide,residue_ids,feature_to_examine)
         else:
             group = amide_groups[side_chain_num-1]
-            residue_ids = group.getResidue1()[1]
+            residue_ids = group.getResidue1()
             visualize_molecule_with_highlights(peptide,residue_ids,feature_to_examine)
     if "distance" in feature_in_map:
         match = re.search(r'distance_hydrogen_(\d+)_to_oxygen_(\d+)', feature_in_map)
@@ -359,7 +359,7 @@ def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     visualize_model(model,X,y)
     _, _, feature_ranges = analyze_feature_ranges(model, X)
     feature_blocks = [
-        ("side_chain", (6,8)),
+        ("side_chain", (6,10)),
         ("distance", (5,5))
     ]
     # r1c1

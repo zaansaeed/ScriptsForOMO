@@ -23,17 +23,18 @@ def main():
 
 
     for i, name in enumerate(names_lines): #processing : smiles -> xyzs
-        if not os.path.exists(main_dir+f"/Peptide_{name}"):
-            os.mkdir(main_dir+f"/Peptide_{name}")
-        working_dir = main_dir+f"/Peptide_{name}"
-        print(name)
-        fs.smile_to_mae(smiles_lines[i], name,working_dir)
-        fs.run_confSearch(name,working_dir)
-        fs.mae_to_pdb(name,working_dir)
-        fs.pdb_to_xyz(name,working_dir)
-        fs.xyz_to_individual_xyz(name,working_dir)
-        fs.extract_energies_to_csv(name,working_dir)
-        fs.boltzmann_weight_energies(name,working_dir,update_matrices)
+        if not name == "BICyP22":
+            if not os.path.exists(main_dir+f"/Peptide_{name}"):
+                os.mkdir(main_dir+f"/Peptide_{name}")
+            working_dir = main_dir+f"/Peptide_{name}"
+            print(f"Running {name}")
+            fs.smile_to_mae(smiles_lines[i], name,working_dir)
+            fs.run_confSearch(name,working_dir)
+            fs.mae_to_pdb(name,working_dir)
+            fs.pdb_to_xyz(name,working_dir)
+            fs.xyz_to_individual_xyz(name,working_dir)
+            fs.extract_energies_to_csv(name,working_dir)
+            fs.boltzmann_weight_energies(name,working_dir,update_matrices)
 
 
     fs.extract_boltzmann_weighted_dihedrals_normalized(main_dir)

@@ -94,7 +94,7 @@ def create_Y(percents) -> np.array:
                 Y.append(float(line.split()[0]))
     else:
         for string_percent in percents:
-            Y.append(string_percent[0]/(string_percent[0]+string_percent[1]+string_percent[2]))
+            Y.append(float(string_percent))
     return np.array(Y)
 
 
@@ -140,11 +140,11 @@ def true_errors(Y_test, y_pred):
         "Poor": 0,
     }
     for Y, y in zip(Y_test, y_pred):
-        if abs(Y-y) <= 0.1:
+        if abs(Y-y) <= 10:
             ranges["Excellent"] += 1
-        elif abs(Y-y) <= 0.20:
+        elif abs(Y-y) <= 20:
             ranges["Good"] += 1
-        elif abs(Y-y) <= 0.3:
+        elif abs(Y-y) <= 30:
             ranges["Fair"] += 1
         else:
             ranges["Poor"] += 1
@@ -434,10 +434,9 @@ def run_GBR(X, Y, test_size, n_splits):
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
-    print("r2 score:", r2_score(y_true, y_pred))
-    test_case = true_errors(Y_test, y_pred)
+    print(calc_metrics(y_true, y_pred))
+    print(true_errors(y_true, y_pred))
     print("\n")
-    print(test_case)
 
     plot_results(y_true, y_pred, 'gradient boosting')
     #visualize_model(best, X, Y)
@@ -518,6 +517,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
+    print(true_errors(y_true, y_pred))
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')
     #dump(best, 'elasticnet_model.joblib')
