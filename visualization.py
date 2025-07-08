@@ -4,6 +4,7 @@ from natsort import natsorted
 from rdkit.Chem import AllChem
 from rdkit import Chem
 import py3Dmol
+from functions import add_amides
 import tempfile
 import webbrowser
 import os
@@ -11,7 +12,7 @@ import re
 from joblib import load
 import csv
 
-def visualize_model(pipeline, X, Y):
+def visualize_model(pipeline, X):
     model = pipeline.named_steps['model']
 
     # Check if the pipeline has polynomial features
@@ -180,11 +181,6 @@ def analyze_feature_ranges(model, X):
     return importances, sorted_features, feature_ranges
 
 
-
-
-
-
-
 def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges,descriptor_funcs):
     """
     feature_blocks: list of tuples
@@ -228,6 +224,7 @@ def visualize_molecule_with_highlights(mol, highlight_atoms,feature_name):
     Args:
         mol: RDKit Mol object (with or without 3D conformer).
         highlight_atoms: List of atom indices (int) to highlight.
+        feature_name: Name of the feature to be highlighted.
     """
 
     # Generate 3D coords if needed
@@ -351,6 +348,7 @@ def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,fea
             for k, v in subdict.items():
                 row[k] = str(v) if isinstance(v, list) else v
             writer.writerow(row)
+
 
 def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     model = load(path_to_model)

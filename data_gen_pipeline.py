@@ -19,25 +19,21 @@ def main():
         names_lines = [name.strip() for name in names_lines]
 
 
-    update_matrices = False
 
 
     for i, name in enumerate(names_lines): #processing : smiles -> xyzs
-        if not name == "BICyP22":
-            if not os.path.exists(main_dir+f"/Peptide_{name}"):
-                os.mkdir(main_dir+f"/Peptide_{name}")
-            working_dir = main_dir+f"/Peptide_{name}"
-            print(f"Running {name}")
-            fs.smile_to_mae(smiles_lines[i], name,working_dir)
-            fs.run_confSearch(name,working_dir)
-            fs.mae_to_pdb(name,working_dir)
-            fs.pdb_to_xyz(name,working_dir)
-            fs.xyz_to_individual_xyz(name,working_dir)
-            fs.extract_energies_to_csv(name,working_dir)
-            fs.boltzmann_weight_energies(name,working_dir,update_matrices)
-
-
-    fs.extract_boltzmann_weighted_dihedrals_normalized(main_dir)
+        if not os.path.exists(main_dir+f"/Peptide_{name}"):
+            os.mkdir(main_dir+f"/Peptide_{name}")
+        working_dir = main_dir+f"/Peptide_{name}"
+        print(f"Running {name}")
+        fs.smile_to_mae(smiles_lines[i], name,working_dir)
+        fs.run_confSearch(working_dir,120)
+        fs.mae_to_pdb(working_dir)
+        fs.pdb_to_xyz(working_dir)
+        fs.xyz_to_individual_xyz(name,working_dir)
+        fs.extract_energies_to_csv(name,working_dir)
+        fs.boltzmann_weight_distances(name,working_dir)
+        fs.extract_boltzmann_weighted_dihedrals_normalized(name,working_dir)
 
 
 if __name__ == "__main__":

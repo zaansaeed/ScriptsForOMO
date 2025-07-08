@@ -1,18 +1,14 @@
-import csv
 import os
 import subprocess
 import time
-from tokenize import group
-
-from rdkit.Chem import AllChem, FragmentOnBonds
+from rdkit.Chem import FragmentOnBonds
 from rdkit import Chem
 import pandas as pd
 from collections import deque
 import math
 import numpy as np
 from natsort import natsorted
-
-from ScriptsForOMO.visualization import visualize_molecule_with_highlights
+import glob
 
 main_dir = os.path.abspath("/Users/zaansaeed/Desktop/NewPeptides")
 
@@ -45,17 +41,19 @@ def waiting_for_file(working_dir,name,wait_time) -> None:
 
 def split_xyz(working_dir,input_file,name,counter) -> int:
     """
-    Splits a single XYZ file containing all conformation coordinates into
-    separate XYZ files, each representing one conformation.
-
-    :param working_dir: Directory where the output XYZ files will be stored
-    :type working_dir: str
-    :param input_file: Path to the input XYZ file containing all conformations
-    :type input_file: str
-    :param name: Base name for the generated XYZ output files
-    :type name: str
-    :return: None
-
+    Takes an xyz with multple molecules and splits each into its own xyz file in working_dir ( a folder called {name} conformations. 
+    Returns the number of molecules in the xyz file for indexing purposes. Assumes that xyz file has the following format (typical format): 
+    #  numAtoms
+    # Name
+    # Atom_1 X Y Z
+    # etc..
+    # Atom_numAtoms X Y Z
+    :param working_dir: 
+    :param input_file: 
+    :param name: 
+    :param counter: 
+    :return: int
+    """"""
     """
     temp_count = counter-1
     with open(input_file, "r") as f:
@@ -65,7 +63,7 @@ def split_xyz(working_dir,input_file,name,counter) -> int:
         num_cords = num_coords + 2  # num of cords + 2 because of the length and name of peptide
         conformations = []  #will contain the n many arrays of coordinates of n conformations
         while True:
-            lines = [f.readline() for i in range(num_cords)]
+            lines = [f.readline() for _ in range(num_cords)]
             if not any(lines):
                 break
             conformations.append(lines)
@@ -76,6 +74,26 @@ def split_xyz(working_dir,input_file,name,counter) -> int:
             f.writelines(conf)
     return temp_count
 
+
+def split_mae_structconvert(mae_file, structconvert_path):
+    """
+    Splits a .mae file with multiple structures into multiple .mae files with 1 structure each. Appends "_model" to the end of the file name.
+    :param mae_file:
+    :param structconvert_path:
+    :return:
+    """
+
+    base_name = os.path.splitext(mae_file)[0]
+    output_prefix = base_name + "_model.mae"
+
+    subprocess.run([
+        structconvert_path,
+        "-split-nstructures", "1",
+        mae_file,
+        output_prefix
+    ], check=True)
+
+    print(f"Split files created with prefix {output_prefix}_*.mae")
 
 
 def smile_to_mae(smile_string,name,working_dir) -> None:
@@ -93,51 +111,42 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
         the associated files. This ensures proper organization and file
         management.
     :type name: str
+
+    :param working_dir: The working directory where the output files will be
     :return: None
+    :param smile_string:
+    :param name:
+    :param working_dir:
+    :return:
     """
 
-    def split_mae_structconvert(mae_file, structconvert_path):
-        base_name = os.path.splitext(mae_file)[0]
-        output_prefix = base_name + "_model.mae"
-
-        subprocess.run([
-            structconvert_path,
-            "-split-nstructures", "1",
-            mae_file,
-            output_prefix
-        ], check=True)
-
-        print(f"Split files created with prefix {output_prefix}_*.mae")
-
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it -contains smile string
+    if not os.path.exists(f"{name}.smi"): #if there is no smile file, create it - contains only the smile string
         temp_smi = os.path.join(working_dir, f"{name}.smi")
         with open(temp_smi, "w") as temp_file:
             temp_file.write(f"{smile_string}\n")
-        ##add hydrogens
-        subprocess.run(["obabel", "-ismi", f"{name}.smi", "-osmi", "-O", f"{name}.smi", "-xh", "-h"],check=True)
 
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
         subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
+        split_mae_structconvert(f"{name}.mae","/opt/schrodinger/suites2024-3/utilities/structconvert") #split the .mae file into multiple files, one for each model, if a tautomer exists
 
-        split_mae_structconvert(f"{name}.mae","/opt/schrodinger/suites2024-3/utilities/structconvert") #split the .mae file into multiple files, one for each model
-        #if tat exists
-
-
-        print('smile ->mae')
+        print('smile -> mae')
 
     os.chdir(main_dir)
 
 
-
-import glob
 def get_split_files():
+    """
+    Returns a list of all the names that end with "_model" in the current working directory.
+    :return:
+    """
     files = glob.glob("*_model*.mae")
     filtered = [f for f in files if "out" not in f]
     return sorted([os.path.splitext(f)[0] for f in filtered])
 
-def run_confSearch(name,working_dir) -> None:
+
+def run_confSearch(working_dir,wait_time) -> None:
     """
     Generates and executes a conformational search configuration for a specified molecular input file.
 
@@ -145,20 +154,19 @@ def run_confSearch(name,working_dir) -> None:
     Schrödinger's Macromodel and executes the conformational search. It monitors the
     creation and size of the output file to ensure completion and reports when done.
 
-    :param name: The base name of the input .mae file and other related conformational
-        search files (e.g., "molecule" for "molecule.mae").
     :param working_dir: The directory where the input and output files for conformational
         search are located or will be created.
+    :param wait_time: The time in seconds to wait for the conformational search to complete.
     :return: None
     """
     os.chdir(working_dir)
 
-    split_files = get_split_files()
-    for file in split_files:
-        if not os.path.exists(file):  # if the conf search file does not exist, we will create it.
-            conf_search_file = os.path.join(working_dir, f"{file}")
+    names = get_split_files()  # get all the names of the files that end with "_model"
+    for name in names:
+        if not os.path.exists(name):  # if the conf search input file does not exist, we will create it.
+            conf_search_file = os.path.join(working_dir, f"{name}")
             with open(conf_search_file, "w") as f:
-                f.write(f"INPUT_STRUCTURE_FILE {file}.mae\n")
+                f.write(f"INPUT_STRUCTURE_FILE {name}.mae\n")
                 f.write("JOB_TYPE CONFSEARCH\n")
                 f.write("CONFSEARCH_METHOD MCMM\n")
                 f.write("FORCE_FIELD OPLS_2005\n")
@@ -175,58 +183,53 @@ def run_confSearch(name,working_dir) -> None:
                 f.write("CONFSEARCH_STEPS_PER_ROTATABLE 100\n")
                 f.write("ENERGY_WINDOW 104.6\n")
                 f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
-        if not os.path.exists(f"{file}-out.mae"):
+
+        if not os.path.exists(f"{name}-out.mae"):
             subprocess.run([
                 "/opt/schrodinger/suites2024-3/macromodel",
-                f"{file}"])
-            waiting_for_file(working_dir, f"{file}-out.mae", 120)
+                f"{name}"])
+            waiting_for_file(working_dir, f"{name}-out.mae", wait_time)
 
         print("DONE RUNNING CONFSEARCH")
 
     os.chdir(main_dir)
 
 
-def mae_to_pdb(name,working_dir) -> None:
+def mae_to_pdb(working_dir) -> None:
     """
     Converts a Maestro (.mae) file to a Protein Data Bank (.pdb) file using the
     Schrödinger structconvert utility. The function navigates to the specified
     working directory, performs the file conversion, and ensures the output file
     is created before returning to the original directory.
 
-    :param name: The name of the file without extension. This will be appended
-        with '-out.mae' and '-out.pdb' for input and output file names,
-        respectively.
-    :type name: str
     :param working_dir: The working directory where the input file is located.
         It is also used for temporary operations during the file conversion.
     :type working_dir: str
     :return: None
     """
-    #convert to pdb
 
     os.chdir(working_dir)
 
     split_files = get_split_files()
+
     for file in split_files:
         if not os.path.exists(f"{file}-out.pdb"):
             subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{file}-out.mae", f"{file}-out.pdb"])
             waiting_for_file(working_dir, f"{file}-out.pdb", 30)
         if not os.path.exists(f"{file}-out-template.pdb"):
             create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
-        print("DONE CONVERTING MAE TO PDB")
+            print("DONE CONVERTING MAE TO PDB")
 
     os.chdir(main_dir)
 
 
-def pdb_to_xyz(name,working_dir) -> None:
+def pdb_to_xyz(working_dir) -> None:
     """
     Converts a PDB file to an XYZ file using Open Babel. This function changes the current
     working directory to the specified `working_dir` and triggers the conversion process.
     If the conversion output file is not found or its size changes during the process,
     it revalidates periodically until the file has stabilized or exists.
 
-    :param name: Name of the file (without extension) to be converted.
-    :type name: str
     :param working_dir: Directory where the PDB input file exists and where the XYZ
         output file will be created.
     :type working_dir: str
@@ -238,26 +241,20 @@ def pdb_to_xyz(name,working_dir) -> None:
     for f in split_files:
         if not os.path.exists(f"{f}-out.xyz"):
             os.system(f"obabel -ipdb {f}-out.pdb -O {f}-out.xyz")
-
             waiting_for_file(working_dir,f"{f}-out.xyz",15)
 
-
-        print("DONE CONVERTING PDB TO XYZ")
+            print("DONE CONVERTING PDB TO XYZ")
 
     os.chdir(main_dir)
 
 
 def xyz_to_individual_xyz(og_name,working_dir) -> None:
     """
-    Converts a combined XYZ file to individual XYZ files and saves them in a newly
-    created directory named after the provided name followed by "_Conformations".
-    If the target directory already exists, the function will skip the directory
-    creation step. The process switches directories to perform the operation and
-    returns to the initial working directory at the end.
+    Converts XYZ file into its individual structure XYZ files if they exist. Creates {og_name}_Conformations folder, and combines all _model XYZ files into 1 folder (if multiple conf searches for the same molecule occur due to tautomer)
 
-    :param name: The base name used to create the target directory and individual XYZ
+    :param og_name: The base name used to create the target directory and individual XYZ
         files.
-    :type name: str
+    :type og_name: str
     :param working_dir: The current working directory where the operation begins
         and where the combined XYZ file is expected to be located.
     :type working_dir: str
@@ -265,7 +262,7 @@ def xyz_to_individual_xyz(og_name,working_dir) -> None:
     """
     os.chdir(working_dir)
     split_files = get_split_files()
-    conf_counter=1
+    conf_counter = 1
     if not os.path.exists(f"{og_name}_Conformations"):  # create folder with all conforamtions
         os.mkdir(f"{og_name}_Conformations")
         temp_working_dir = working_dir + f"/{og_name}_Conformations"
@@ -281,22 +278,11 @@ def xyz_to_individual_xyz(og_name,working_dir) -> None:
 
 def extract_energies_to_csv(og_name,working_dir) -> None:
     """
-    Extracts energy values from a log file and saves them into a CSV file. Processes
-    each line in a specified log file to identify and extract conformation energy
-    values. These values are then arranged into a pandas DataFrame object, and
-    stored in a CSV file with a specified naming convention.
+    Extracts all energies from all logs from conf searches of each model and saves it into 1 .csv file, sorted from lowest energy to highest.
 
-    This function assumes that the log file includes lines containing the text
-    "Conformation " and that the energy values are located in the fourth column
-    after splitting the line.
-
-    If a CSV file with the expected name already exists in the working directory,
-    the function will not process the log file and terminates its operations without
-    duplicating the file.
-
-    :param name: The base name of the log file (without the file extension). The same
+    :param og_name: The base name of the log file (without the file extension). The same
                  name is used as the base name for the output CSV file.
-    :type name: str
+    :type og_name: str
     :param working_dir: Absolute or relative path to the working directory where the
                         input log file is located and the output CSV file will be saved.
     :type working_dir: str
@@ -334,11 +320,6 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
     os.chdir(main_dir)
 
 
-
-
-
-#+====================================================================================
-
 def bfs_traversal(mol, starting_id) -> list[int]:
     """
     Performs a breadth-first search (BFS) traversal on a molecular graph starting from
@@ -375,9 +356,9 @@ def bfs_traversal(mol, starting_id) -> list[int]:
                 queue.append(neighbor.GetIdx())
 
     bfs_nitrogens = []
-    for id in bfs_order:
-        if mol.GetAtomWithIdx(id).GetSymbol() == 'N':
-            bfs_nitrogens.append(id)
+    for ID in bfs_order:
+        if mol.GetAtomWithIdx(ID).GetSymbol() == 'N':
+            bfs_nitrogens.append(ID)
     return bfs_nitrogens
 
 
@@ -391,16 +372,20 @@ class AmideGroup:
     the peptide.
     """
 
-    def __init__(self,IDS, group_num, peptide,amide_groups):
-        # Recheck if this is the best way to find N and other IDs, based on how amide groups are found
+    def __init__(self,ids_of_match, group_num, peptide,amide_groups):
 
         self.group_num = group_num
-        self.N = IDS[0]
+        self.N = ids_of_match[0] #nitrogen is always the first atom in the match group, since substructures start with "N"
+
+        #residue associate with amide group, behind it if behind is towards the n-terminus
+        self.Residue1 = None
+        self.Residue2 = None #only the last amide group will have two residues, so this will be none for n-1 amide groups if there are n residues
 
         nitrogen = peptide.GetAtomWithIdx(self.N)
-        neighbors = nitrogen.GetNeighbors()
         hydrogen_id = None
-        for neighbor in neighbors:
+
+        for neighbor in nitrogen.GetNeighbors(): #this looks for the hydrogen atom of the nitrogen atom if it exists.
+                                                # Also looks for the Carbon and Oxygen in the amide group (this should be behind the nitrogen, or more towards the n-terminus)
             if neighbor.GetSymbol() == 'H':
                 hydrogen_id = neighbor.GetIdx()
             if neighbor.GetSymbol() == 'C':
@@ -409,59 +394,53 @@ class AmideGroup:
                         self.C=neighbor.GetIdx()
                         self.O=neighbor2.GetIdx()
 
-        self.Residue1= None
-        self.Residue2= None #only the last amide group will have 2 residues
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
-        #if group num is 1, then cut bond on Nitrogen, thats residue,
-        # cut bond from nitrogen to oxygen and nitrogen to carbon, (second to last id )
-        # ('NCC(=O)N'))# normal case, 2 carbons
-        #     'NCCC(=O)N'))# abnormal case, 3 carbons
-        atom1, atom2, atom3, atom4 = 0,0,0,0
+        # ('NCC(=O)N')) normal case, 2 carbons
+        #'NCCC(=O)N')) abnormal case, 3 carbons
+
         bond1,bond2 = None,None
-        if group_num == 1: #if its the first amide, aka N-termini case
-            atom1 = self.N #last nitrogen, which is where we want to cut
-            atom2 = self.C #carbon to which this nitrogen is connected to
+
+        if group_num == 1: #if it's the first amide, aka N-termini residue, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
+            atom1 = self.N
+            atom2 = self.C
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
             mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
-
             frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
-
-            frags = []
             for atom_ids in frags_ids:
-                # PathToSubmol keeps atom indices + conformers
                 if self.C in atom_ids:
                     self.Residue1 = atom_ids
                     break
         else: # if this is another amide, not the first one
+            # the residue AFTER (towards C-terminus)  these atoms
             prev_amide = amide_groups[group_num-2]
-            atom1 = prev_amide.getN() #the residue AFTER these atoms
+            atom1 = prev_amide.getN()
             atom2 = prev_amide.getC()
-            atom3 = self.N #the residue BEFORE these atoms (remember, the amide group youre currently on is  the 0th index of atom_ids, or self.N)
-            atom4 = self.C #
+            # the residue BEFORE (towards the N-terminus) these atoms (remember, the amide group you're currently on is the 0th index of atom_ids, or self.N)
+            atom3 = self.N
+            atom4 = self.C
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
                     bond2 = bond.GetIdx()
-            if bond1 == bond2: #trivial case, should never happen
+            if bond1 == bond2: #trivial case, should never happen. necessary since we check all substructure matches
                 self.Residue1 = None
                 return
             mol_frag = FragmentOnBonds(peptide,[bond1,bond2],addDummies=False)
             frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
-            frags = []
             for atom_ids in frags_ids:
-                # PathToSubmol keeps atom indices + conformers
                 if self.C in atom_ids:
                     self.Residue1 = atom_ids
                     break
-
-        if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  # check if its the last one after residue1 is estavblished
+        """
+        hard coded 5 here?
+        """
+        if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  #Check if we're the last residue. If we are, we want to set our second Residue. We cut the nitrogen and carbon bond right before the C-terminus
             atom1 = self.N
             atom2 = self.C
-
             for bond in peptide.GetBonds():
                 if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
                     bond1 = bond.GetIdx()
@@ -471,8 +450,6 @@ class AmideGroup:
                 if self.N in atom_ids:
                     self.Residue2 = atom_ids
                     break
-
-
 
     def getResidue1(self):
         return self.Residue1
@@ -488,7 +465,6 @@ class AmideGroup:
         return self.N
     def getH(self):
         return self.H
-
 
 
 def find_n_terminus(input_peptide) -> int:
@@ -513,6 +489,7 @@ def find_n_terminus(input_peptide) -> int:
     except IndexError:
         raise Exception("No N-terminus found in the input peptide.")
 
+
 def add_amides(input_peptide) -> list[AmideGroup]:
     """
     Identifies amide groups in the given peptide molecule and returns them as a list of AmideGroup
@@ -532,6 +509,7 @@ def add_amides(input_peptide) -> list[AmideGroup]:
     matches2 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCCC(=O)N'))# abnormal case, 3 carbons
     matches3 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)O')) # C terminus
     matches = matches1 + matches2 + matches3
+
     n_terminus = find_n_terminus(input_peptide)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
 
@@ -560,9 +538,7 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
         methods `getH()` to return the Hydrogen atom index (or None if not present) and
         `getO()` to return the Oxygen atom index.
     :type amide_groups: list
-    :param atom_coordinates: A dictionary mapping atomic indices to their 3D coordinates as
-        numpy arrays. The keys correspond to atomic indices, and the values are numpy arrays
-        of shape (3,) representing x, y, z coordinates.
+    :param peptide: The input molecule, represented as an RDKit molecule object. It has the position coordinates necessary to be processed.
     :return: A 2D distance matrix where the entry at [i][j] represents the distance between
         the Hydrogen atom of the ith amide group and the Oxygen atom of the jth amide group.
         Entries for self-distances (i.e., when i == j) are set to 0.0 if a Hydrogen atom exists
@@ -578,7 +554,7 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
             else:
                 amid1H = amid1.getH()
                 if amid1H is None:
-                    distance_matrix[i][j] = -1.0 #prolines have no nitrogen Hydrogen, so the distance is non existant
+                    distance_matrix[i][j] = -1.0 #If the nitrogen is methylated, then the distance doesn't exist
                 else:
                     amid2O = amid2.getO()
                     amid1H_pos = peptide.GetConformer().GetAtomPosition(amid1H)
@@ -586,42 +562,7 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
                     distance_matrix[i][j] = np.linalg.norm(np.array(amid1H_pos)-np.array(amid2O_pos))
     return distance_matrix
 
-def generate_peptide_with_hydrogens_from_pdb(peptide,pdb_file):
-    num_atoms = peptide.GetNumAtoms()
-    with open(pdb_file, 'r') as f:
-        lines = f.read().split('\n')
-        conect_data = [line.split() for line in lines if "CONECT" in line]
-    conect_dict = {}
 
-    editable_peptide = Chem.EditableMol(peptide)
-    for atom in peptide.GetAtoms():
-        print(atom.GetIdx(),atom.GetSymbol())
-    for line in conect_data:
-        key = int(line[1])-1
-        values = [int(v) - 1 for v in line[2:]]  # Subtract 1 from each value
-        if key in conect_dict:
-            conect_dict[key].update(values)
-        else:
-            conect_dict[key] = set(values)
-    conect_dict = dict(sorted(conect_dict.items()))
-    print(conect_dict)
-    for atom, connected_atoms in conect_dict.items():
-        if atom >= num_atoms:
-            hydrogen_atom = Chem.Atom(1)
-            hydrogen_atom_idx = editable_peptide.AddAtom(hydrogen_atom)
-            for heavy_atom_idx in connected_atoms:
-                editable_peptide.AddBond(heavy_atom_idx, hydrogen_atom_idx, Chem.BondType.SINGLE)
-
-
-    peptide = editable_peptide.GetMol()
-    for atom in peptide.GetAtoms():
-        print(atom.GetIdx(),atom.GetSymbol())
-        print("neighbors: ")
-        for neighbor in atom.GetNeighbors():
-            print(neighbor.GetIdx(),neighbor.GetSymbol())
-        print(" ")
-    return peptide
-##ENSURE THIS WORKS
 def xyz_to_array(xyz_file) -> list[list[float]]:
     """
     Convert the content of an `.xyz` file into a list representation where the
@@ -655,7 +596,13 @@ def xyz_to_array(xyz_file) -> list[list[float]]:
         coordinates.append([x, y, z])
     return coordinates
 
-def add_double_bonds_to_pdb(input_pdb):
+
+def add_double_bonds_to_pdb(input_pdb) -> Chem.Mol:
+    """
+    Takes an input peptide and adds double bonds to it based on the CONECT records in the PDB file.
+    :param input_pdb:
+    :return:
+    """
     peptide = Chem.MolFromPDBFile(input_pdb,removeHs=False)
     peptide = Chem.RWMol(peptide)
     from collections import defaultdict, Counter
@@ -678,7 +625,7 @@ def add_double_bonds_to_pdb(input_pdb):
 
     # Output
     for atom_ids, num_bonds in duplicate_bonds.items():
-        if num_bonds == 4:
+        if num_bonds == 4: # meaning CONECT 1 2, CONECT 1 2, CONECT 2 1, CONECT 2 1 == double bond
             src, tgt = atom_ids
             bond = peptide.GetBondBetweenAtoms(int(src) - 1, int(tgt) - 1)
             bond.SetBondType(Chem.BondType.DOUBLE)
@@ -687,6 +634,7 @@ def add_double_bonds_to_pdb(input_pdb):
     Chem.SanitizeMol(peptide)
     return peptide
 
+
 def is_int(s):
     try:
         int(s)
@@ -694,7 +642,8 @@ def is_int(s):
     except ValueError:
         return False
 
-def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
+
+def boltzmann_weight_distances(og_name,working_dir) -> None:
     """
     Calculate and store the Boltzmann-weighted energies based on molecular conformations.
 
@@ -704,18 +653,12 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     process involves reading input SMILES files, generating molecular conformations,
     and determining their Boltzmann-weighted contributions.
 
-    :param name: The name identifier for the molecular system. This is used to
-                 reference the input SMILES (.smi) file and naming the output
-                 files for distances.
-    :type name: str
+    :param og_name: the name to call the BWdistance matrix
+    :type og_name: str
     :param working_dir: The file path to the working directory where input files
                         are located and output files are saved. Subdirectories for
                         intermediate data may also be created under this path.
     :type working_dir: str
-    :param update_matrices: A flag indicating whether to force the update of the
-                            Boltzmann-weighted matrix and overwrite the existing
-                            result file.
-    :type update_matrices: bool
     :return: None
     """
 
@@ -723,7 +666,6 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     names = get_split_files()
 
     if not os.path.exists(f"{og_name}-BWdistances.csv"):
-        #add smiles thing
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
         peptide = peptides[0]
         amideGroups = add_amides(peptides[0])
@@ -737,14 +679,15 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
             if is_int(model_num):
                 model_num = int(model_num)
                 peptide = peptides[model_num-1]
+
             peptide.RemoveAllConformers()
+
             peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
+
             distances.append(get_amide_distances(amideGroups,peptide))
         os.chdir(working_dir)
 
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
-
-
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
 
@@ -753,11 +696,12 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     os.chdir(main_dir)
 
 
-
-
-################################################
-################################################
-def create_template_model(input_pdb, output_pdb):
+def create_template_model(input_pdb, output_pdb) -> None:
+    """
+    Creates a singular template model to be used for distances/feature calculations based on the input PDB file that originally contains all PDB structures.
+    :param output_pdb:
+    :return:
+    """
     with open(input_pdb, 'r') as infile:
         lines = infile.readlines()
 
@@ -784,6 +728,7 @@ def create_template_model(input_pdb, output_pdb):
         outfile.writelines(first_model)
 
     print(f"✅ First model with CONECT lines written to '{output_pdb}'")
+
 
 def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
     """
@@ -819,10 +764,16 @@ def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
     return mol
 
 def calculate_dihedrals(residue,mol):
-    def get_dihedral_angle(p1, p2, p3, p4):
+    """
+    Calculates dihedral angles for a given residue in a mol object. For the given possible residues, this works.
+    :param residue: List of IDs that correspond to the residue in the mol object
+    :param mol: Chem.Mol object
+    :return:
+    """
+    def get_dihedral_angle(p1s, p2s, p3s, p4s):
         """Calculate the dihedral angle between four points in 3D space."""
         # Convert to numpy arrays
-        p1, p2, p3, p4 = map(np.array, (p1, p2, p3, p4))
+        p1, p2, p3, p4 = map(np.array, (p1s, p2s, p3s, p4s))
 
         # Bond vectors
         b1 = p2 - p1
@@ -847,12 +798,8 @@ def calculate_dihedrals(residue,mol):
         angle = np.arctan2(y, x)
         return np.degrees(angle)
 
-
-
     if len(residue) == 5: #n-terminus case (normal) (5000,5000,psi) [NH2]C[C](=O)[N]
-        temp_dihedrals = []
-        temp_dihedrals.append(5000)
-        temp_dihedrals.append(5000)
+        temp_dihedrals = [5000, 5000]
         p1= mol.GetConformer().GetAtomPosition(residue[0])
         p2 = mol.GetConformer().GetAtomPosition(residue[1])
         p3= mol.GetConformer().GetAtomPosition(residue[2])
@@ -861,8 +808,7 @@ def calculate_dihedrals(residue,mol):
         return temp_dihedrals
 
     if len(residue) == 6: #n-terminus case (abnormal) (5000,theta,psi) [NH2]CC[C](=O)[N]
-        temp_dihedrals = []
-        temp_dihedrals.append(5000)
+        temp_dihedrals = [5000]
         p1= mol.GetConformer().GetAtomPosition(residue[0])
         p2= mol.GetConformer().GetAtomPosition(residue[1])
         p3=mol.GetConformer().GetAtomPosition(residue[2])
@@ -908,90 +854,81 @@ def calculate_dihedrals(residue,mol):
         p4 = mol.GetConformer().GetAtomPosition(residue[7])
         temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
         return temp_dihedrals
-    return
+    return None
+
+
+def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
+    os.chdir(working_dir)
+    if not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+        peptide_normalized_dihedrals = []
+        names = get_split_files()
+        peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
+        mol = peptides[0]
+        #add embeding?
+        n_terminus = find_n_terminus(mol)
+        nitrogen_order = bfs_traversal(mol, n_terminus)
+        n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
+        n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
+        normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
+        abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
+        all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
+        all_residues = list(all_residues)
+        ############## get rid of asparagine
+        query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
+        query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
+        query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
+        query4 = Chem.MolFromSmarts('[NH2]CC[C](=O)[NH2]')
+        asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(
+            query2) + mol.GetSubstructMatches(query3) + mol.GetSubstructMatches(query4)
+        for asparagine in asparagines:
+            for residue in all_residues:
+                if asparagine[-1] in residue:
+                    all_residues.remove(residue)
+        ##########################
+        ordered_residues = []
+        for id in nitrogen_order:
+            for residue in all_residues:
+                if id in residue:
+                    ordered_residues.append(residue)
+                    all_residues.remove(residue)
+
+        for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
+            model_num = conformation_xyz.split("_")[-3]
+            if is_int(model_num):
+                model_num = int(model_num)
+                mol = peptides[model_num - 1]
+                mol.RemoveAllConformers()
+                mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
+                conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
+                for residue in ordered_residues:
+                    conformation_dihedrals.append(calculate_dihedrals(residue,mol))
+                #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
+                conformation_normalized_dihedrals = []
+                for i in range(len(conformation_dihedrals)): #num of residues
+                    residue_normalized_dihedrals_and_flag = []
+                    flag = (1,0)
+                    for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
+                        if angle > 1000:
+                            flag = (0,0)
+                            residue_normalized_dihedrals_and_flag.append((0,0))
+                        else:
+                            residue_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
+                    residue_normalized_dihedrals_and_flag.append(flag)
+
+                    conformation_normalized_dihedrals.append(residue_normalized_dihedrals_and_flag)
+
+            peptide_normalized_dihedrals.append(conformation_normalized_dihedrals)
 
 
 
-def extract_boltzmann_weighted_dihedrals_normalized(main_dir):
-    os.chdir(main_dir)
-    for folder in natsorted(os.listdir(main_dir)):
-        if os.path.isdir(folder):
-            os.chdir(folder)
-            working_dir = os.getcwd()
-            name = folder.split("_")[1]
-            print(name)
-            if not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
-                smiles_string = open(f"{name}.smi").read().strip() #generate the smiles string, currently working in Peptide _XXXX folder
-                peptide_normalized_dihedrals = []
-                mol = Chem.MolFromSmiles(smiles_string)
-                mol = Chem.AddHs(mol)
-                #add embeding?
-                n_terminus = find_n_terminus(mol)
-                nitrogen_order = bfs_traversal(mol, n_terminus)
-                n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
-                n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
-                normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
-                abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
-                all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
-                all_residues = list(all_residues)
-                ############## get rid of asparagine
-                query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
-                query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
-                query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
-                query4 = Chem.MolFromSmarts('[NH2]CC[C](=O)[NH2]')
-                asparagines = mol.GetSubstructMatches(query1) + mol.GetSubstructMatches(
-                    query2) + mol.GetSubstructMatches(query3) + mol.GetSubstructMatches(query4)
-                for asparagine in asparagines:
-                    for residue in all_residues:
-                        if asparagine[-1] in residue:
-                            all_residues.remove(residue)
-                ##########################
-                ordered_residues = []
-                for id in nitrogen_order:
-                    for residue in all_residues:
-                        if id in residue:
-                            ordered_residues.append(residue)
-                            all_residues.remove(residue)
+        #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
+        boltzmann_matrix = boltzmann_weighted_average(peptide_normalized_dihedrals, working_dir,name)
+        boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
+        print(boltzmann_matrix)
+        df = pd.DataFrame(boltzmann_matrix)
+        df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
+        print("dihedral calculation done for " +name )
 
-                for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
-                    if conformation_xyz.endswith('.xyz'): #working within 1 conformer
-                        mol.RemoveAllConformers()
-                        mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                        conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
-                        for residue in ordered_residues:
-                            conformation_dihedrals.append(calculate_dihedrals(residue,mol))
-                        #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
-                        flag = (1,0)
-                        conformation_normalized_dihedrals = []
-                        for i in range(len(conformation_dihedrals)): #num of residues
-                            residue_normalized_dihedrals_and_flag = []
-                            flag = (1,0)
-                            for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
-                                if angle > 1000:
-                                    flag = (0,0)
-                                    residue_normalized_dihedrals_and_flag.append((0,0))
-                                else:
-                                    residue_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
-                            residue_normalized_dihedrals_and_flag.append(flag)
-
-                            conformation_normalized_dihedrals.append(residue_normalized_dihedrals_and_flag)
-
-                    peptide_normalized_dihedrals.append(conformation_normalized_dihedrals)
-
-
-
-                #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
-                boltzmann_matrix = boltzmann_weighted_average(peptide_normalized_dihedrals, working_dir,name)
-
-
-                boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
-                print(boltzmann_matrix)
-                df = pd.DataFrame(boltzmann_matrix)
-                df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
-                print("dihedral calculation done for " +name )
-                os.chdir(main_dir)
-
-            os.chdir(main_dir)
 
 
 
