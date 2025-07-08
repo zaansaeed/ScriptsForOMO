@@ -655,6 +655,44 @@ def xyz_to_array(xyz_file) -> list[list[float]]:
         coordinates.append([x, y, z])
     return coordinates
 
+def add_double_bonds_to_pdb(input_pdb):
+    peptide = Chem.MolFromPDBFile(input_pdb,removeHs=False)
+    peptide = Chem.RWMol(peptide)
+    from collections import defaultdict, Counter
+    with open(input_pdb, 'r') as infile:
+        lines = infile.readlines()
+        lines = [line.split() for line in lines]
+        conect_data = [line for line in lines if "CONECT"  in line]
+
+    bond_counts = Counter()
+
+    for row in conect_data:
+        if row[0] == 'CONECT' and len(row) > 2:
+            src = row[1]
+            for tgt in row[2:]:
+                pair = tuple(sorted((src, tgt)))  # ('1', '2') == ('2', '1')
+                bond_counts[pair] += 1
+
+    # Extract only duplicates
+    duplicate_bonds = {bond: count for bond, count in bond_counts.items() if count > 1}
+
+    # Output
+    for atom_ids, num_bonds in duplicate_bonds.items():
+        if num_bonds == 4:
+            src, tgt = atom_ids
+            bond = peptide.GetBondBetweenAtoms(int(src) - 1, int(tgt) - 1)
+            bond.SetBondType(Chem.BondType.DOUBLE)
+
+    peptide = peptide.GetMol()
+    Chem.SanitizeMol(peptide)
+    return peptide
+
+def is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
     """
@@ -686,32 +724,22 @@ def boltzmann_weight_energies(og_name,working_dir, update_matrices) -> None:
 
     if not os.path.exists(f"{og_name}-BWdistances.csv"):
         #add smiles thing
-        with open(f"{og_name}.smi","r") as f:
-            lines = f.readlines()
-            smiles = lines[0].split()[0]
-
-        peptide = Chem.MolFromSmiles(smiles)
-        editable_mol = Chem.EditableMol(peptide)
-        hydrogen_indices = [atom.GetIdx() for atom in peptide.GetAtoms() if atom.GetSymbol() == 'H']
-        for idx in sorted(hydrogen_indices, reverse=True):
-            editable_mol.RemoveAtom(idx)
-
-        peptide = editable_mol.GetMol()
-
-        peptide = generate_peptide_with_hydrogens_from_pdb(peptide,f"{names[0]}-out-template.pdb")
-        visualize_molecule_with_highlights(peptide,[],"")
-        #amideGroups = add_amides(peptide)
-        for amide in amideGroups:
-            print(amide.getIDs(),amide.group_num,amide.getH())
+        peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
+        peptide = peptides[0]
+        amideGroups = add_amides(peptides[0])
 
         temp_working_dir = working_dir + f"/{og_name}_Conformations"
         os.chdir(temp_working_dir) #working in conforamtions folder
         distances = []
         for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
+            model_num = conformation_xyz.split("_")[-3]
+
+            if is_int(model_num):
+                model_num = int(model_num)
+                peptide = peptides[model_num-1]
             peptide.RemoveAllConformers()
             peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
             distances.append(get_amide_distances(amideGroups,peptide))
-            print(conformation_xyz,distances)
         os.chdir(working_dir)
 
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
