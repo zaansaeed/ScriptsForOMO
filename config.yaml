@@ -1,0 +1,6 @@
+data_generation:
+  schrodinger_path: /opt/schrodinger/suites2024-3
+  main_dir: /Users/zaansaeed/Desktop/NewPeptides #contains smiles/percents .txt
+  smiles_input_file: all_peptides.smi
+  names_input_file: all_names.txt
+  target_input_file: all_percents.txt

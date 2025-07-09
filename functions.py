@@ -3,14 +3,46 @@ import subprocess
 import time
 from rdkit.Chem import FragmentOnBonds
 from rdkit import Chem
+from rdkit.Chem import Descriptors3D, Descriptors
 import pandas as pd
 from collections import deque
 import math
 import numpy as np
+import random
 from natsort import natsorted
 import glob
+from collections import defaultdict
+import logging
 
-main_dir = os.path.abspath("/Users/zaansaeed/Desktop/NewPeptides")
+config = None
+schrodinger_path = None
+struct_convert_path = None
+macro_model_path = None
+lig_prep_path = None
+
+def init_config(cfg):
+    global config, schrodinger_path, macro_model_path, struct_convert_path, lig_prep_path
+    config = cfg
+    schrodinger_path = config["data_generation"]["schrodinger_path"]
+    struct_convert_path = schrodinger_path + "/utilities/structconvert"
+    macro_model_path = schrodinger_path + "/macromodel"
+    lig_prep_path = schrodinger_path + "/ligprep"
+    return config
+
+
+
+def create_target_file(name,percent,working_dir):
+    os.chdir(working_dir)
+    if not os.path.exists(f"{name}_target.txt"):
+        with open(f"{name}_target.txt", "w") as f:
+            f.write(f"{percent}")
+        logging.info(f"Created {name}_target.txt")
+
+
+def load_lines(filepath):
+    with open(filepath, "r") as f:
+        return [line.strip() for line in f]
+
 
 def waiting_for_file(working_dir,name,wait_time) -> None:
     """
@@ -127,13 +159,11 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
             temp_file.write(f"{smile_string}\n")
 
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
-        subprocess.run(["/opt/schrodinger/suites2024-3/ligprep", "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
+        subprocess.run([lig_prep_path, "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
         waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
-        split_mae_structconvert(f"{name}.mae","/opt/schrodinger/suites2024-3/utilities/structconvert") #split the .mae file into multiple files, one for each model, if a tautomer exists
+        split_mae_structconvert(f"{name}.mae",struct_convert_path) #split the .mae file into multiple files, one for each model, if a tautomer exists
 
-        print('smile -> mae')
-
-    os.chdir(main_dir)
+        logging.info(f"Created {name}.mae")
 
 
 def get_split_files():
@@ -184,15 +214,14 @@ def run_confSearch(working_dir,wait_time) -> None:
                 f.write("ENERGY_WINDOW 104.6\n")
                 f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
 
+            logging.info(f"Created {name}, running confsearch now...")
         if not os.path.exists(f"{name}-out.mae"):
             subprocess.run([
-                "/opt/schrodinger/suites2024-3/macromodel",
+                macro_model_path,
                 f"{name}"])
             waiting_for_file(working_dir, f"{name}-out.mae", wait_time)
 
-        print("DONE RUNNING CONFSEARCH")
-
-    os.chdir(main_dir)
+            logging.info(f"Conformational search complete for {name}")
 
 
 def mae_to_pdb(working_dir) -> None:
@@ -214,13 +243,12 @@ def mae_to_pdb(working_dir) -> None:
 
     for file in split_files:
         if not os.path.exists(f"{file}-out.pdb"):
-            subprocess.run(["/opt/schrodinger/suites2024-3/utilities/structconvert", f"{file}-out.mae", f"{file}-out.pdb"])
+            subprocess.run([struct_convert_path, f"{file}-out.mae", f"{file}-out.pdb"])
             waiting_for_file(working_dir, f"{file}-out.pdb", 30)
+            logging.info(f"Created {file}-out.pdb from conformational search")
         if not os.path.exists(f"{file}-out-template.pdb"):
             create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
-            print("DONE CONVERTING MAE TO PDB")
-
-    os.chdir(main_dir)
+            logging.info(f"Created {file}-out-template.pdb to use for feature calculations")
 
 
 def pdb_to_xyz(working_dir) -> None:
@@ -242,10 +270,7 @@ def pdb_to_xyz(working_dir) -> None:
         if not os.path.exists(f"{f}-out.xyz"):
             os.system(f"obabel -ipdb {f}-out.pdb -O {f}-out.xyz")
             waiting_for_file(working_dir,f"{f}-out.xyz",15)
-
-            print("DONE CONVERTING PDB TO XYZ")
-
-    os.chdir(main_dir)
+            logging.info(f"Created {f}-out.xyz from {f}-out.pdb")
 
 
 def xyz_to_individual_xyz(og_name,working_dir) -> None:
@@ -271,9 +296,7 @@ def xyz_to_individual_xyz(og_name,working_dir) -> None:
             num_confs = split_xyz(temp_working_dir,working_dir+f"/{f}-out.xyz",f,conf_counter)
             conf_counter+=num_confs
         os.chdir(working_dir)
-        print("DONE CONVERTING XYZ TO INDIVIDUAL XYZ")
-
-    os.chdir(main_dir)
+        logging.info(f"Created {og_name}_Conformations folder with all conformations")
 
 
 def extract_energies_to_csv(og_name,working_dir) -> None:
@@ -294,30 +317,28 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
     all_energies = []
     conf_counter = 1
 
-    for name in names:
-        log_file = f"{name}.log"
-        print(log_file)
+    if not os.path.exists(f"{og_name}_total_energies.csv"):
+        for name in names:
+            log_file = f"{name}.log"
 
-        # Extract energies directly from .log file
-        with open(log_file, "r") as f:
-            for line in f:
-                if "Conformation " in line:
-                    try:
-                        energy = float(line.split()[3])  # adjust if different column
-                        all_energies.append((f"{og_name}_Conformation_{conf_counter}", energy))
-                        conf_counter += 1
-                    except ValueError:
-                        continue
+            # Extract energies directly from .log file
+            with open(log_file, "r") as f:
+                for line in f:
+                    if "Conformation " in line:
+                        try:
+                            energy = float(line.split()[3])  # adjust if different column
+                            all_energies.append((f"{og_name}_Conformation_{conf_counter}", energy))
+                            conf_counter += 1
+                        except ValueError:
+                            continue
 
-    # Sort by energy
-    all_energies.sort(key=lambda x: x[1])
+        # Sort by energy
+        all_energies.sort(key=lambda x: x[1])
 
-    # Save to total_energies.csv
-    df = pd.DataFrame(all_energies, columns=["Name", "Energy"])
-    df.to_csv(f"{og_name}_total_energies.csv", index=False)
-
-
-    os.chdir(main_dir)
+        # Save to total_energies.csv
+        df = pd.DataFrame(all_energies, columns=["Name", "Energy"])
+        df.to_csv(f"{og_name}_total_energies.csv", index=False)
+        logging.info(f"Created {og_name}_total_energies.csv")
 
 
 def bfs_traversal(mol, starting_id) -> list[int]:
@@ -376,14 +397,14 @@ class AmideGroup:
 
         self.group_num = group_num
         self.N = ids_of_match[0] #nitrogen is always the first atom in the match group, since substructures start with "N"
-
+        self.C =None
+        self.O = None
         #residue associate with amide group, behind it if behind is towards the n-terminus
         self.Residue1 = None
         self.Residue2 = None #only the last amide group will have two residues, so this will be none for n-1 amide groups if there are n residues
 
         nitrogen = peptide.GetAtomWithIdx(self.N)
         hydrogen_id = None
-
         for neighbor in nitrogen.GetNeighbors(): #this looks for the hydrogen atom of the nitrogen atom if it exists.
                                                 # Also looks for the Carbon and Oxygen in the amide group (this should be behind the nitrogen, or more towards the n-terminus)
             if neighbor.GetSymbol() == 'H':
@@ -394,6 +415,7 @@ class AmideGroup:
                         self.C=neighbor.GetIdx()
                         self.O=neighbor2.GetIdx()
 
+
         self.H = hydrogen_id
         self.atom_IDs = (self.C,self.O,self.N)
         # ('NCC(=O)N')) normal case, 2 carbons
@@ -401,55 +423,56 @@ class AmideGroup:
 
         bond1,bond2 = None,None
 
-        if group_num == 1: #if it's the first amide, aka N-termini residue, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
-            atom1 = self.N
-            atom2 = self.C
-            for bond in peptide.GetBonds():
-                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
-                    bond1 = bond.GetIdx()
-            mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
-            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
-            for atom_ids in frags_ids:
-                if self.C in atom_ids:
-                    self.Residue1 = atom_ids
-                    break
-        else: # if this is another amide, not the first one
-            # the residue AFTER (towards C-terminus)  these atoms
-            prev_amide = amide_groups[group_num-2]
-            atom1 = prev_amide.getN()
-            atom2 = prev_amide.getC()
-            # the residue BEFORE (towards the N-terminus) these atoms (remember, the amide group you're currently on is the 0th index of atom_ids, or self.N)
-            atom3 = self.N
-            atom4 = self.C
-            for bond in peptide.GetBonds():
-                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
-                    bond1 = bond.GetIdx()
-                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
-                    bond2 = bond.GetIdx()
-            if bond1 == bond2: #trivial case, should never happen. necessary since we check all substructure matches
-                self.Residue1 = None
-                return
-            mol_frag = FragmentOnBonds(peptide,[bond1,bond2],addDummies=False)
-            frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
-            for atom_ids in frags_ids:
-                if self.C in atom_ids:
-                    self.Residue1 = atom_ids
-                    break
-        """
-        hard coded 5 here?
-        """
-        if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  #Check if we're the last residue. If we are, we want to set our second Residue. We cut the nitrogen and carbon bond right before the C-terminus
-            atom1 = self.N
-            atom2 = self.C
-            for bond in peptide.GetBonds():
-                if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
-                    bond1 = bond.GetIdx()
-            mol_frag = FragmentOnBonds(peptide, [bond1], addDummies=False)
-            frags_ids = Chem.GetMolFrags(mol_frag, asMols=False)
-            for atom_ids in frags_ids:
-                if self.N in atom_ids:
-                    self.Residue2 = atom_ids
-                    break
+        if None not in self.atom_IDs:
+            if group_num == 1: #if it's the first amide, aka N-termini residue, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
+                atom1 = self.N
+                atom2 = self.C
+                for bond in peptide.GetBonds():
+                    if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                        bond1 = bond.GetIdx()
+                mol_frag = FragmentOnBonds(peptide,[bond1],addDummies=False)
+                frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
+                for atom_ids in frags_ids:
+                    if self.C in atom_ids:
+                        self.Residue1 = atom_ids
+                        break
+            else: # if this is another amide, not the first one
+                # the residue AFTER (towards C-terminus)  these atoms
+                prev_amide = amide_groups[group_num-2]
+                atom1 = prev_amide.getN()
+                atom2 = prev_amide.getC()
+                # the residue BEFORE (towards the N-terminus) these atoms (remember, the amide group you're currently on is the 0th index of atom_ids, or self.N)
+                atom3 = self.N
+                atom4 = self.C
+                for bond in peptide.GetBonds():
+                    if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                        bond1 = bond.GetIdx()
+                    if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom3, atom4}:
+                        bond2 = bond.GetIdx()
+                if bond1 == bond2: #trivial case, should never happen. necessary since we check all substructure matches
+                    self.Residue1 = None
+                    return
+                mol_frag = FragmentOnBonds(peptide,[bond1,bond2],addDummies=False)
+                frags_ids = Chem.GetMolFrags(mol_frag,asMols=False)
+                for atom_ids in frags_ids:
+                    if self.C in atom_ids:
+                        self.Residue1 = atom_ids
+                        break
+            """
+            hard coded 5 here?
+            """
+            if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  #Check if we're the last residue. If we are, we want to set our second Residue. We cut the nitrogen and carbon bond right before the C-terminus
+                atom1 = self.N
+                atom2 = self.C
+                for bond in peptide.GetBonds():
+                    if {bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()} == {atom1, atom2}:
+                        bond1 = bond.GetIdx()
+                mol_frag = FragmentOnBonds(peptide, [bond1], addDummies=False)
+                frags_ids = Chem.GetMolFrags(mol_frag, asMols=False)
+                for atom_ids in frags_ids:
+                    if self.N in atom_ids:
+                        self.Residue2 = atom_ids
+                        break
 
     def getResidue1(self):
         return self.Residue1
@@ -519,10 +542,11 @@ def add_amides(input_peptide) -> list[AmideGroup]:
             if nID in match and n_terminus not in match:
                 amide = AmideGroup(match, i, input_peptide,amide_groups)
                 amide_ids = amide.getIDs()
-                if amide_ids not in used_ids:
+                if amide_ids not in used_ids and None not in amide_ids:
                     amide_groups.append(amide)
                     used_ids.append(amide_ids)
                     i += 1
+
     return amide_groups
 
 
@@ -690,15 +714,21 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
+        logging.info(f"The BW distance matrix for {og_name} is saved in {working_dir}/{og_name}-BWdistances.csv")
+        index = random.randint(0, len(distances) - 1)
+        element = distances[index]
+
+        logging.info(f"Test matrix of distances is Conformation number {index}:\n{element}")
 
 
 
-    os.chdir(main_dir)
+
 
 
 def create_template_model(input_pdb, output_pdb) -> None:
     """
     Creates a singular template model to be used for distances/feature calculations based on the input PDB file that originally contains all PDB structures.
+    :param input_pdb: Path to the input `.pdb` file containing atomic coordinate data.
     :param output_pdb:
     :return:
     """
@@ -727,7 +757,7 @@ def create_template_model(input_pdb, output_pdb) -> None:
     with open(output_pdb, 'w') as outfile:
         outfile.writelines(first_model)
 
-    print(f"✅ First model with CONECT lines written to '{output_pdb}'")
+    logging.info(f"The template model was created and saved in {output_pdb}.")
 
 
 def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
@@ -873,7 +903,8 @@ def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
         abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
         all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
         all_residues = list(all_residues)
-        ############## get rid of asparagine
+        ##########################
+        # get rid of asparagine
         query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
         query2 = Chem.MolFromSmarts('C(=O)[N]CC[C](=O)[NH2]')
         query3 = Chem.MolFromSmarts('[NH2]C[C](=O)[NH2]')
@@ -894,28 +925,29 @@ def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
 
         for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
             model_num = conformation_xyz.split("_")[-3]
+
             if is_int(model_num):
                 model_num = int(model_num)
                 mol = peptides[model_num - 1]
-                mol.RemoveAllConformers()
-                mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
-                conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
-                for residue in ordered_residues:
-                    conformation_dihedrals.append(calculate_dihedrals(residue,mol))
-                #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
-                conformation_normalized_dihedrals = []
-                for i in range(len(conformation_dihedrals)): #num of residues
-                    residue_normalized_dihedrals_and_flag = []
-                    flag = (1,0)
-                    for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
-                        if angle > 1000:
-                            flag = (0,0)
-                            residue_normalized_dihedrals_and_flag.append((0,0))
-                        else:
-                            residue_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
-                    residue_normalized_dihedrals_and_flag.append(flag)
+            mol.RemoveAllConformers()
+            mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
+            conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
+            for residue in ordered_residues:
+                conformation_dihedrals.append(calculate_dihedrals(residue,mol))
+            #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
+            conformation_normalized_dihedrals = []
+            for i in range(len(conformation_dihedrals)): #num of residues
+                residue_normalized_dihedrals_and_flag = []
+                flag = (1,0)
+                for angle in conformation_dihedrals[i]: #working on converting (phi,theta,psi) -> ((sin,cos)...(sin,cos), flag)
+                    if angle > 1000:
+                        flag = (0,0)
+                        residue_normalized_dihedrals_and_flag.append((0,0))
+                    else:
+                        residue_normalized_dihedrals_and_flag.append((math.sin(math.radians(angle)),math.cos(math.radians(angle))))
+                residue_normalized_dihedrals_and_flag.append(flag)
 
-                    conformation_normalized_dihedrals.append(residue_normalized_dihedrals_and_flag)
+                conformation_normalized_dihedrals.append(residue_normalized_dihedrals_and_flag)
 
             peptide_normalized_dihedrals.append(conformation_normalized_dihedrals)
 
@@ -924,13 +956,12 @@ def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
         #boltzmann weight the n many conformation [(sin,cos)...(sin,cos),flag]
         boltzmann_matrix = boltzmann_weighted_average(peptide_normalized_dihedrals, working_dir,name)
         boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
-        print(boltzmann_matrix)
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
-        print("dihedral calculation done for " +name )
-
-
-
+        logging.info(f"The BW dihedral matrix for {name} is saved in {working_dir}/{name}-BWDihedralNormalized.csv")
+        index = random.randint(0, len(peptide_normalized_dihedrals) - 1)
+        element = peptide_normalized_dihedrals[index]
+        logging.info(f"Test matrix of dihedrals is Conformation number {index}:\n{element}")
 
 def boltzmann_weighted_average(values, working_dir, name):
     # Load total energies
@@ -960,10 +991,167 @@ def boltzmann_weighted_average(values, working_dir, name):
     return weighted_sum
 
 
+def smart_parse_token(token: str):
+    try:
+        return float(token)
+    except ValueError:
+        return token
+
+
+def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[list,list,list]:
+    smile_to_indices = defaultdict(list)
+    for i, smile in enumerate(smiles_lines_all):
+        smile_to_indices[smile].append(i)
+    indices_to_keep = set()
+    for indices in smile_to_indices.values():
+        if len(indices) == 1:
+            indices_to_keep.add(indices[0])
+        else:
+            best_index = max(indices, key=lambda x: float(percents_all[x])) #first index of the [6,12,18]
+            indices_to_keep.add(best_index)
+
+    indices_to_remove = [i for i in range(len(smiles_lines_all)) if i not in indices_to_keep]
+
+    smiles_lines_all = [j for i,j in enumerate(smiles_lines_all) if i not in indices_to_remove]
+    names_lines_all = [j for i,j in enumerate(names_lines_all) if i not in indices_to_remove]
+    percents_all = [j for i,j in enumerate(percents_all) if i not in indices_to_remove]
+    return smiles_lines_all, names_lines_all, percents_all
+
+
+
+def create_new_descriptor(descriptor_name,og_name,working_dir):
+    os.chdir(working_dir)
+    if not os.path.exists(f"{og_name}_{descriptor_name}.csv"): #change to/from not
+
+        working_dir = os.getcwd()
+        peptide_descriptors = []
+
+
+        peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in get_split_files()]
+        mol = peptides[0]
+        amide_groups = add_amides(mol)
+
+
+        for conformation_xyz in natsorted(os.listdir(f"{og_name}_Conformations")):
+            model_num = conformation_xyz.split("_")[-3]
+            if is_int(model_num):
+                model_num = int(model_num)
+                mol = peptides[model_num - 1]
+
+            peptide = load_xyz_coords(mol, f"{working_dir}/{og_name}_Conformations/{conformation_xyz}")
+
+            # here, put the function of what you want to calculate for each conformation
+            # function of "peptide"
+            peptide_descriptors.append(side_chain_descriptors(amide_groups,peptide))
 
 
 
 
+
+
+        logging.info(f"The {descriptor_name} descriptors for {og_name} are saved in {working_dir}/{og_name}_{descriptor_name}.csv")
+        peptide_boltzmann = boltzmann_weighted_average(peptide_descriptors,working_dir,og_name)
+        peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
+        df = pd.DataFrame(peptide_boltzmann)
+        df.to_csv(f'{og_name}_{descriptor_name}.csv', index=False, header=False)
+
+
+def read_file(file_name) -> list[str]:
+    with open(file_name, 'r') as f:
+        lines = f.readlines()
+        lines = [line.strip() for line in lines]
+        if '\t' in lines[0]: #if its gonna be a list of lists
+            lines = [[smart_parse_token(x) for x in line.strip().split('\t')] for line in lines]
+        return lines
+
+
+def make_submol_from_atom_ids(mol, atom_ids):
+    """
+    Create a submolecule from a list of atom indices, preserving coordinates and properties.
+
+    Args:
+        mol (Chem.Mol): RDKit molecule with 3D coordinates.
+        atom_ids (list of int): Atom indices to include in the submolecule.
+
+    Returns:
+        Chem.Mol: Submolecule with copied coordinates and properties.
+    """
+    atom_ids_set = set(atom_ids)
+
+    # Map old atom idx → new atom idx
+    old_to_new = {}
+    new_mol = Chem.RWMol()
+
+    # Copy atoms
+    for i, aid in enumerate(atom_ids):
+        old_atom = mol.GetAtomWithIdx(aid)
+        new_atom = Chem.Atom(old_atom.GetAtomicNum())
+        new_atom.SetFormalCharge(old_atom.GetFormalCharge())
+        new_atom.SetChiralTag(old_atom.GetChiralTag())
+        new_atom.SetHybridization(old_atom.GetHybridization())
+        new_atom.SetNumExplicitHs(old_atom.GetNumExplicitHs())
+        new_idx = new_mol.AddAtom(new_atom)
+        old_to_new[aid] = new_idx
+
+    # Copy bonds only between included atoms
+    for bond in mol.GetBonds():
+        a1 = bond.GetBeginAtomIdx()
+        a2 = bond.GetEndAtomIdx()
+        if a1 in atom_ids_set and a2 in atom_ids_set:
+            new_mol.AddBond(old_to_new[a1], old_to_new[a2], bond.GetBondType())
+
+    # Add conformer with same coordinates
+    conf = mol.GetConformer()
+    new_conf = Chem.Conformer(len(atom_ids))
+    for i, aid in enumerate(atom_ids):
+        pos = conf.GetAtomPosition(aid)
+        new_conf.SetAtomPosition(i, pos)
+
+    new_mol = new_mol.GetMol()
+    new_mol.RemoveAllConformers()
+    new_mol.AddConformer(new_conf, assignId=True)
+    for atom in new_mol.GetAtoms():
+        if atom.GetIsAromatic() and not atom.IsInRing():
+            atom.SetIsAromatic(False)  # "Unmark" invalid aromatic atoms
+
+    Chem.SanitizeMol(new_mol)
+    return new_mol
+
+def side_chain_descriptors(amidegroups,peptide):
+    descriptors_for_peptide = []
+    descriptors_to_calculate =  {
+        # Your original descriptors
+        "Radius": Descriptors3D.RadiusOfGyration,
+        "BertzCT": Descriptors.BertzCT,
+        "Kappa1": Descriptors.Kappa1,
+        "MolLogP": Descriptors.MolLogP,
+        "TPSA": Descriptors.TPSA,
+        "Eccentricity": Descriptors3D.Eccentricity,
+        "Asphericity": Descriptors3D.Asphericity,
+        "SpherocityIndex": Descriptors3D.SpherocityIndex,
+        "MolWt": Descriptors.MolWt,
+        "NumRotatableBonds": Descriptors.NumRotatableBonds,
+    }
+    for amide_group in amidegroups:
+        residue_ids = amide_group.getResidue1()
+        residue = make_submol_from_atom_ids(peptide, residue_ids)
+        results = {name: func(residue) for name, func in descriptors_to_calculate.items()}
+
+
+        descriptors_for_peptide.append(list(results.values()))
+        if amide_group.getResidue2() is not None:## CHECKING THE LAST AMIDE GROUP, IT IS THE ONLY ONE WITH 2 RESIDUES
+            residue_ids = amide_group.getResidue2()
+            residue = make_submol_from_atom_ids(peptide, residue_ids)
+            for atom in residue.GetAtoms():
+                if atom.GetIsAromatic() and not atom.IsInRing():
+                    atom.SetIsAromatic(False)
+            Chem.SanitizeMol(residue)
+
+
+            results = {name: func(peptide) for name, func in descriptors_to_calculate.items()}
+
+            descriptors_for_peptide.append(list(results.values()))
+    return descriptors_for_peptide
 
 
 

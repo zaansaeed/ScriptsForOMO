@@ -49,30 +49,32 @@ def plot_results(true_labels_for_testing, y_pred, model):
     plt.tight_layout()
     plt.show()
 
-def peptide_csv_to_array(main_dir,names,feature):
+def peptide_csv_to_array(main_dir,feature):
     X = []
-    for name in names:
-        working_dir = os.path.join(main_dir, f"Peptide_{name}")
-        if os.path.isdir(working_dir):
-            os.chdir(working_dir)
-            for file in os.listdir(working_dir):  # working in folder
-                if file.endswith(f"{feature}.csv"):
-                    data = pd.read_csv(file, header=None, index_col=None)
+    for folder in natsorted(os.listdir(main_dir)):
+        if folder.startswith("Peptide_"):
+            name = folder.split("_")[1]
+            working_dir = os.path.join(main_dir, f"Peptide_{name}")
+            if os.path.isdir(working_dir):
+                os.chdir(working_dir)
+                for file in os.listdir(working_dir):  # working in folder
+                    if file.endswith(f"{feature}.csv"):
+                        data = pd.read_csv(file, header=None, index_col=None)
 
-                    if feature == "BWDihedralNormalized":  # remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
-                        data = np.array(data)
-                        data = data[:, :-1]
-                        data[:, -1] = np.round(data[:, -1])
-                        data = pd.DataFrame(data)
-                    X.append(data.values.tolist())
+                        if feature == "BWDihedralNormalized":  # remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
+                            data = np.array(data)
+                            data = data[:, :-1]
+                            data[:, -1] = np.round(data[:, -1])
+                            data = pd.DataFrame(data)
+                        X.append(data.values.tolist())
 
     X = np.array(X)
     return X.reshape(len(X), -1)
 
-def create_X(main_dir,names,features): #takes in csv file and reads into array
+def create_X(main_dir,features): #takes in csv file and reads into array
     X = []
     for feature in features:
-        data = peptide_csv_to_array(main_dir,names,feature)
+        data = peptide_csv_to_array(main_dir,feature)
         X.append(data)
     X_new = np.hstack([arr for arr in X])
     return X_new
@@ -86,17 +88,17 @@ def sort_by_names_alphabetically(names,values) -> list:
         Y.append(value)
     return Y
 
-def create_Y(percents) -> np.array:
-    Y =[]
-    if percents == "percents.txt":
-        with open(percents) as f:
-            for line in f:
-                Y.append(float(line.split()[0]))
-    else:
-        for string_percent in percents:
-            Y.append(float(string_percent))
-    return np.array(Y)
-
+def create_Y(main_dir) -> np.array:
+    os.chdir(main_dir)
+    Y = []
+    for folder in natsorted(os.listdir(main_dir)):
+        if folder.startswith("Peptide_"):
+            name = folder.split("_")[1]
+            with open(os.path.join(folder, f"{name}_target.txt")) as f:
+                for line in f:
+                    Y.append(float(line.split()[0]))
+    Y = np.array(Y)
+    return Y
 
 
 def run_RFC(X,Y):
@@ -183,7 +185,7 @@ def run_RFR(X, Y, n_splits,test_size):
     ])
 
     param_grid = {
-        'model__n_estimators': [50, 100, 200, 300, 400, 500, 750],
+        'model__n_estimators': [ 400, 500, 750],
         'model__max_depth': [None, 5, 10, 20, 30, 40, 50, 75, 100],
         'model__min_samples_split': [2, 5, 10, 20, 50],
         'model__min_samples_leaf': [1, 2, 4, 10, 20],
@@ -197,7 +199,7 @@ def run_RFR(X, Y, n_splits,test_size):
         estimator=pipeline,  # Your full pipeline with 'model' step
         param_distributions=param_grid,
         n_iter=200,  # Number of parameter settings sampled (adjust for speed)
-        scoring='neg_mean_squared_error',
+        scoring='r2',
         cv=kf,  # 5-fold CV (adjust if desired)
         random_state=42,
         n_jobs=-1,
@@ -523,6 +525,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
     #dump(best, 'elasticnet_model.joblib')
     #np.savetxt("X.csv", X, delimiter=",")
     #np.savetxt("y.csv", Y, delimiter=",")
+
 def create_Y_ROG(main_dir,names):
     Y= []
     for name in names:
