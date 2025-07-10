@@ -65,7 +65,7 @@ def main():
 
     names = [name for name in main_dictionary.keys()]
     #BWdistances, side_chain_descriptors, BWDihedralNormalized, molecular_descriptors
-    features = ["side_chain_descriptors","BWdistances","BWDihedralNormalized"]
+    features = ["side_chain_descriptors","BWdistances"]
     target_value = "target"
 
     X, Y = ML.create_model_data(names,features,main_dir,target_value)
@@ -73,7 +73,7 @@ def main():
     print(Y.shape)
 
 
-    ML.run_RFR(X,Y,5,.2)
+    ML.run_elasticnet(X,Y,5,.2)
 
 
 if __name__ == "__main__":

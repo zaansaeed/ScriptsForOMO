@@ -1043,7 +1043,7 @@ def create_new_descriptor(descriptor_name,og_name,working_dir):
 
             # here, put the function of what you want to calculate for each conformation
             # function of "peptide"
-            peptide_descriptors.append(molecular_descriptors(peptide))
+            peptide_descriptors.append(side_chain_descriptors(amide_groups,peptide))
 
 
 
