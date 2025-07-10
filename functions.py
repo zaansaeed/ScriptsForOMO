@@ -1021,6 +1021,7 @@ def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[li
 
 def create_new_descriptor(descriptor_name,og_name,working_dir):
     os.chdir(working_dir)
+    #not if want to make new one
     if not os.path.exists(f"{og_name}_{descriptor_name}.csv"): #change to/from not
 
         working_dir = os.getcwd()
@@ -1042,7 +1043,7 @@ def create_new_descriptor(descriptor_name,og_name,working_dir):
 
             # here, put the function of what you want to calculate for each conformation
             # function of "peptide"
-            peptide_descriptors.append(side_chain_descriptors(amide_groups,peptide))
+            peptide_descriptors.append(molecular_descriptors(peptide))
 
 
 
@@ -1117,21 +1118,33 @@ def make_submol_from_atom_ids(mol, atom_ids):
     Chem.SanitizeMol(new_mol)
     return new_mol
 
+
+def molecular_descriptors(peptide):
+    descriptors_for_peptide = []
+    descriptors_to_calculate = {
+
+        "RadiusOfGyration": Descriptors3D.RadiusOfGyration,
+        "Asphericity": Descriptors3D.Asphericity,
+        "InertialShapeFactor": Descriptors3D.InertialShapeFactor,
+        "Eccentricity": Descriptors3D.Eccentricity,
+        "SpherocityIndex": Descriptors3D.SpherocityIndex,
+    }
+    results = {name: func(peptide) for name, func in descriptors_to_calculate.items()}
+    descriptors_for_peptide.append(list(results.values()))
+    return descriptors_for_peptide
+
 def side_chain_descriptors(amidegroups,peptide):
     descriptors_for_peptide = []
-    descriptors_to_calculate =  {
-        # Your original descriptors
-        "Radius": Descriptors3D.RadiusOfGyration,
-        "BertzCT": Descriptors.BertzCT,
-        "Kappa1": Descriptors.Kappa1,
-        "MolLogP": Descriptors.MolLogP,
-        "TPSA": Descriptors.TPSA,
-        "Eccentricity": Descriptors3D.Eccentricity,
+    descriptors_to_calculate = {
+        "RadiusOfGyration": Descriptors3D.RadiusOfGyration,
         "Asphericity": Descriptors3D.Asphericity,
+        "InertialShapeFactor": Descriptors3D.InertialShapeFactor,
+        "Eccentricity": Descriptors3D.Eccentricity,
         "SpherocityIndex": Descriptors3D.SpherocityIndex,
         "MolWt": Descriptors.MolWt,
-        "NumRotatableBonds": Descriptors.NumRotatableBonds,
     }
+
+
     for amide_group in amidegroups:
         residue_ids = amide_group.getResidue1()
         residue = make_submol_from_atom_ids(peptide, residue_ids)

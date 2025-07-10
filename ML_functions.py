@@ -17,6 +17,7 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils._testing import ignore_warnings
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
+import glob
 
 from joblib import dump, load
 
@@ -49,57 +50,72 @@ def plot_results(true_labels_for_testing, y_pred, model):
     plt.tight_layout()
     plt.show()
 
-def peptide_csv_to_array(main_dir,feature):
-    X = []
+
+
+def filter_names(main_dictionary):
+    best_entries = {}
+
+    for name, (smiles, percent) in main_dictionary.items():
+        if smiles not in best_entries or percent > best_entries[smiles][1]:
+            best_entries[smiles] = (name, percent)
+
+    # Step 2: rebuild dictionary with the chosen names
+    filtered_dict = {}
+    for smiles, (name, percent) in best_entries.items():
+        filtered_dict[name] = (smiles, percent)
+
+    filtered_dict = dict(natsorted(filtered_dict.items()))
+    return filtered_dict
+
+def peptide_csv_to_array(name, feature, main_dir):
+    folder = os.path.join(main_dir, f"Peptide_{name}")
+    pattern = os.path.join(folder, f"*{feature}.csv")
+    matches = glob.glob(pattern)
+
+    feature_file = matches[0]
+
+    data = pd.read_csv(feature_file, header=None, index_col=None)
+
+    if feature == "BWDihedralNormalized":
+        data = data.drop(columns=[2,3])
+        data = np.array(data)
+        data = data[:, :-1]
+        data[:, -1] = np.round(data[:, -1])
+        data = pd.DataFrame(data)
+
+    return data.values.flatten()
+
+
+def create_model_data(names,features, main_dir,target_value):
+    X_all = []
+    Y = []
+
     for folder in natsorted(os.listdir(main_dir)):
         if folder.startswith("Peptide_"):
             name = folder.split("_")[1]
-            working_dir = os.path.join(main_dir, f"Peptide_{name}")
-            if os.path.isdir(working_dir):
+            if name in names:
+                working_dir = os.path.join(main_dir, folder)
                 os.chdir(working_dir)
-                for file in os.listdir(working_dir):  # working in folder
-                    if file.endswith(f"{feature}.csv"):
-                        data = pd.read_csv(file, header=None, index_col=None)
 
-                        if feature == "BWDihedralNormalized":  # remove the last padded 0, then ensure that the boltzmann weighted ~0.9 -> 1
-                            data = np.array(data)
-                            data = data[:, :-1]
-                            data[:, -1] = np.round(data[:, -1])
-                            data = pd.DataFrame(data)
-                        X.append(data.values.tolist())
+                X_temp = []
+                for feature in features:
+                    x_feat = peptide_csv_to_array(name, feature, main_dir)
+                    X_temp.append(x_feat)
 
-    X = np.array(X)
-    return X.reshape(len(X), -1)
+                # Stack features into single row for this peptide
+                X_all.append(np.concatenate(X_temp))
 
-def create_X(main_dir,features): #takes in csv file and reads into array
-    X = []
-    for feature in features:
-        data = peptide_csv_to_array(main_dir,feature)
-        X.append(data)
-    X_new = np.hstack([arr for arr in X])
-    return X_new
+                # Load target
+                target_file = os.path.join(working_dir, f"{name}_{target_value}.txt")
+                with open(target_file) as f:
+                    for line in f:
+                        Y.append(float(line.split()[0]))
+            else:
+                pass
 
-
-def sort_by_names_alphabetically(names,values) -> list:
-    names_percents_dictionary = dict(zip(names, values))
-    names_percents_dictionary = dict((k, names_percents_dictionary[k]) for k in natsorted(names_percents_dictionary))
-    Y = []
-    for value in names_percents_dictionary.values():
-        Y.append(value)
-    return Y
-
-def create_Y(main_dir) -> np.array:
-    os.chdir(main_dir)
-    Y = []
-    for folder in natsorted(os.listdir(main_dir)):
-        if folder.startswith("Peptide_"):
-            name = folder.split("_")[1]
-            with open(os.path.join(folder, f"{name}_target.txt")) as f:
-                for line in f:
-                    Y.append(float(line.split()[0]))
+    X = np.array(X_all)
     Y = np.array(Y)
-    return Y
-
+    return X, Y
 
 def run_RFC(X,Y):
     X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
@@ -164,11 +180,11 @@ def custom_success_metric(y_true, y_pred):
     errors = np.abs(y_pred - y_true)
     score = 0
     for err in errors:
-        if err <= 0.1:
+        if err <= 10:
             score += 1.0
-        elif err <= 0.2:
+        elif err <= 20:
             score += 0.7
-        elif err <= 0.3:
+        elif err <= 30:
             score += 0.3
 
         # Poor contributes 0
@@ -179,15 +195,15 @@ def run_RFR(X, Y, n_splits,test_size):
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
     weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
+    from sklearn.decomposition import PCA
     pipeline = Pipeline([
         ('model', RandomForestRegressor(random_state=42))
     ])
 
     param_grid = {
-        'model__n_estimators': [ 400, 500, 750],
-        'model__max_depth': [None, 5, 10, 20, 30, 40, 50, 75, 100],
-        'model__min_samples_split': [2, 5, 10, 20, 50],
+        'model__n_estimators': [ 200,150,100,250,75],
+        'model__max_depth': [None, 5, 10, 20,15,8],
+        'model__min_samples_split': [2, 5, 3,4],
         'model__min_samples_leaf': [1, 2, 4, 10, 20],
         'model__max_features': ['sqrt', 'log2', 0.2, 0.4, 0.6, 0.8, 1.0],
         'model__bootstrap': [True],
@@ -199,7 +215,7 @@ def run_RFR(X, Y, n_splits,test_size):
         estimator=pipeline,  # Your full pipeline with 'model' step
         param_distributions=param_grid,
         n_iter=200,  # Number of parameter settings sampled (adjust for speed)
-        scoring='r2',
+        scoring='neg_root_mean_squared_error',
         cv=kf,  # 5-fold CV (adjust if desired)
         random_state=42,
         n_jobs=-1,
@@ -211,6 +227,7 @@ def run_RFR(X, Y, n_splits,test_size):
 
     # Outputs
     print("Best params:", search.best_params_)
+    print('best score:', search.best_score_)
     #print("mean cv r2:", search.best_score_)
     loo = LeaveOneOut()
     y_pred = []
@@ -314,16 +331,19 @@ def run_SVR(X, Y, n_splits,test_size):
     best = search.best_estimator_
 
     # Outputs
-    print("Best params:", search.best_params_)
-    cv_scores = cross_val_score(best, X_train, Y_train, cv=kf, scoring='r2')
-    for num in cv_scores:
-        print(f"test result: {num}")
-    print("mean success rate on cv:", cv_scores.mean())
 
-    # Example for feature 0
-    y_pred = best.predict(X_test)
-    calc_metrics(Y_test, y_pred)
-    plot_results(Y_test, y_pred, 'svr ')
+
+    loo = LeaveOneOut()
+    y_pred = []
+    y_true = []
+    for train_index, test_index in loo.split(X_train):
+        x_train, x_test = X_train[train_index], X_train[test_index]
+        y_train, y_test = Y_train[train_index], Y_train[test_index]
+        best.fit(x_train, y_train)
+        y_pred.append(best.predict(x_test))
+        y_true.append(y_test)
+    calc_metrics(y_true, y_pred)
+    plot_results(y_true, y_pred, 'svr ')
 
 
 
@@ -445,9 +465,12 @@ def run_GBR(X, Y, test_size, n_splits):
     #calculate_cv_scores(kf, X_train, Y_train, best)
 
 
-
-
-
+def custom_scorer(ratings):
+    scores = {'Excellent': 1.0, 'Good': 0.66, 'Fair': 0.33, 'Poor': 0.0}
+    total = sum(ratings.values())
+    weighted_sum = sum(ratings[key] * scores[key] for key in ratings)
+    normalized_score = weighted_sum / total
+    print("custom scorer:", round(normalized_score, 3))
 
 @ignore_warnings(category=ConvergenceWarning)
 def run_elasticnet(X, Y, n_splits,test_size):
@@ -457,6 +480,8 @@ def run_elasticnet(X, Y, n_splits,test_size):
     # Pipeline: scaling + ElasticNet
     from sklearn.preprocessing import StandardScaler, PolynomialFeatures
     pipeline = Pipeline([
+       # ('poly', PolynomialFeatures(degree=3, include_bias=False)),
+
         ('model', ElasticNet(max_iter=10000))
     ])
     loo = LeaveOneOut()
@@ -498,9 +523,9 @@ def run_elasticnet(X, Y, n_splits,test_size):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring='neg_mean_squared_error',
+        scoring='neg_root_mean_squared_error',
         cv=kf,
-        n_iter=200,
+        n_iter=2000,
         n_jobs=-1,
         verbose=1,
     )
@@ -519,7 +544,11 @@ def run_elasticnet(X, Y, n_splits,test_size):
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
-    print(true_errors(y_true, y_pred))
+    y_pred = np.clip(y_pred, 0,100)
+    ratings = true_errors(y_true, y_pred)
+    print(ratings)
+    custom_scorer(ratings)
+
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')
     #dump(best, 'elasticnet_model.joblib')

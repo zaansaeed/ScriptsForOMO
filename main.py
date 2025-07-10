@@ -57,20 +57,23 @@ def main():
             ######
             fs.boltzmann_weight_distances(name,working_dir)
             fs.extract_boltzmann_weighted_dihedrals_normalized(name,working_dir)
-            #fs.create_new_descriptor("side_chain_descriptors",name,working_dir)
+            fs.create_new_descriptor("side_chain_descriptors",name,working_dir)
             logging.info(f"Finished processing {name}")
             logging.info("------------------------------------")
 
+    main_dictionary = ML.filter_names(main_dictionary)
 
-    features = ["side_chain_descriptors"]
+    names = [name for name in main_dictionary.keys()]
+    #BWdistances, side_chain_descriptors, BWDihedralNormalized, molecular_descriptors
+    features = ["side_chain_descriptors","BWdistances","BWDihedralNormalized"]
+    target_value = "target"
 
-    Y = ML.create_Y(main_dir)
-    X = create_X(main_dir,features)
+    X, Y = ML.create_model_data(names,features,main_dir,target_value)
     print(X.shape)
     print(Y.shape)
 
 
-    ML.run_RFR(X,Y,5,0.20)
+    ML.run_RFR(X,Y,5,.2)
 
 
 if __name__ == "__main__":
