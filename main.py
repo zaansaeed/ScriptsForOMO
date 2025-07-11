@@ -4,13 +4,36 @@ import logging
 from main2 import *
 import ML_functions as ML
 
-def setup_logging(directory_of_log):
-    logging.basicConfig(
-        filename=f"{directory_of_log}/log.log",
-        filemode='w',
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
+def setup_logging_data(directory_of_log):
+    logger = logging.getLogger("data_logger")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # Prevents double logging if root logger is also configured
+
+    log_path = os.path.join(directory_of_log, "data_processing.log")
+    handler = logging.FileHandler(log_path, mode='w')
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    # Avoid adding the handler twice if this function is called again
+    if not logger.handlers:
+        logger.addHandler(handler)
+
+    return logger
+
+def setup_logging_ml(directory_of_log):
+    logger = logging.getLogger("ml")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    log_path = os.path.join(directory_of_log, "ml.log")
+    handler = logging.FileHandler(log_path, mode='w')
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    if not logger.handlers:
+        logger.addHandler(handler)
+
+    return logger
 
 def main():
 
@@ -19,8 +42,9 @@ def main():
         fs.init_config(config)
     main_dir = os.path.abspath(config["data_generation"]["main_dir"])
 
-    setup_logging(main_dir)
-    logging.info("Starting...")
+    data_logger = setup_logging_data(main_dir)
+    ml_logger = setup_logging_ml(main_dir)
+    data_logger.info("Starting data generation...")
 
 
     schrodinger_path = config["data_generation"]["schrodinger_path"]
@@ -44,7 +68,7 @@ def main():
         if name != "pNP-43a" and name != "BICyP22":
             if not os.path.exists(main_dir+f"/Peptide_{name}"):
                 os.mkdir(main_dir+f"/Peptide_{name}")
-                logging.info(f"Created {main_dir+f'/Peptide_{name}'}")
+                data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
             working_dir = main_dir+f"/Peptide_{name}"
             logging.info(f"Processing {name} in {working_dir}")
             fs.create_target_file(name,percent,working_dir)
@@ -57,15 +81,15 @@ def main():
             ######
             fs.boltzmann_weight_distances(name,working_dir)
             fs.extract_boltzmann_weighted_dihedrals_normalized(name,working_dir)
-            fs.create_new_descriptor("side_chain_descriptors",name,working_dir)
-            logging.info(f"Finished processing {name}")
-            logging.info("------------------------------------")
+            #fs.create_new_descriptor("side_chain_descriptors",name,working_dir)
+            data_logger.info(f"Finished processing {name}")
+            data_logger.info("------------------------------------")
 
     main_dictionary = ML.filter_names(main_dictionary)
 
     names = [name for name in main_dictionary.keys()]
     #BWdistances, side_chain_descriptors, BWDihedralNormalized, molecular_descriptors
-    features = ["side_chain_descriptors","BWdistances"]
+    features = ["side_chain_descriptors"]
     target_value = "target"
 
     X, Y = ML.create_model_data(names,features,main_dir,target_value)

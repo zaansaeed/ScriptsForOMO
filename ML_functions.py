@@ -18,8 +18,11 @@ from sklearn.utils._testing import ignore_warnings
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 import glob
-
+import logging
 from joblib import dump, load
+
+
+ml_logger = logging.getLogger("ml")
 
 def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
@@ -280,6 +283,8 @@ def dummy_RFR(X,Y,X_test,Y_test):
     y_pred = dummy.predict(X_test)
     print("dummy regressor: ", custom_success_metric(Y_test, y_pred))
     print("dummy r2:", r2_score(Y_test, y_pred))
+    print("dummy mse:", mean_squared_error(Y_test, y_pred))
+    print("dummy gaussian score", gaussian_scoring(Y_test, y_pred))
 
 def plot_scores_distribution(scores):
     plt.bar(scores.keys(), scores.values())
@@ -308,8 +313,8 @@ def run_SVR(X, Y, n_splits,test_size):
     ])
 
     param_grid = {
-        'model__kernel': ['poly','rbf','linear'],
-        'model__degree': [2, 3, 4, 5],  # Added degree=2 for comparison
+        'model__kernel': ['poly', 'rbf', 'sigmoid'],
+        'model__degree': [2, 3],  # Added degree=2 for comparison
         'model__C': [1, 5, 10, 15, 20, 30],  # Added smaller and larger C values for regularization strength
         'model__gamma': [0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01],  # Broader gamma search
         'model__epsilon': [0.01, 0.05, 0.1, 0.15, 0.2],  # Added smaller epsilon for sensitivity
@@ -347,68 +352,6 @@ def run_SVR(X, Y, n_splits,test_size):
 
 
 
-def run_NN(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-
-    pipeline = Pipeline([
-        ('scaler', StandardScaler()),
-        ('pca', PCA()),
-        ('nn', MLPRegressor(random_state=42, early_stopping=True, validation_fraction=0.1, n_iter_no_change=30))
-    ])
-
-    param_grid = {
-        'pca__n_components': [0.85, 0.90, 0.95, 0.99],
-        'nn__hidden_layer_sizes': [(256,128,64,32), (200,150,100,50)],
-        'nn__activation': ['relu', 'tanh'],
-        'nn__solver': ['adam'],
-        'nn__alpha': [0.0001, 0.001, 0.01],
-        'nn__learning_rate_init': [0.001, 0.0005],
-        'nn__max_iter': [2000],
-        'nn__early_stopping': [True],
-        'nn__n_iter_no_change': [30, 50]
-    }
-
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
-        scoring='r2',
-        cv=kf,
-        n_jobs=-1,
-        verbose=1
-    )
-
-    print("Starting GridSearchCV for automatic Neural Network optimization with PCA...")
-    grid_search.fit(X_train, Y_train)
-    print("GridSearchCV for Neural Network optimization finished.")
-
-    best_pipeline = grid_search.best_estimator_
-    y_pred = best_pipeline.predict(X_test)
-    y_pred = np.clip(y_pred, 0, 1)
-
-    print("\nBest params for Neural Network (pipeline) found by GridSearchCV:", grid_search.best_params_)
-
-    print("\nMetrics on Test Set (Optimized Neural Network with PCA):")
-    calc_metrics(Y_test, y_pred)
-
-    test_case_errors = true_errors(Y_test, y_pred)
-    print("\nTrue Errors (Optimized Neural Network with PCA):")
-    print(test_case_errors)
-
-    success_rate_test = custom_success_metric(Y_test, y_pred)
-    print(f"\nSuccess rate on test set (Optimized Neural Network with PCA): {success_rate_test:.4f}")
-
-    plot_results(Y_test, y_pred, 'Optimized Neural Network with PCA')
-
-    print("\nNote: Direct feature_importances_ attribute is not available for MLPRegressor.")
-    print("Consider using permutation importance or SHAP for feature importance analysis with NNs.")
-
-    print("\nCalculating CV scores for the best Neural Network pipeline with PCA...")
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-    calculate_cv_scores(kf, X_train, Y_train, best_pipeline)
 
 
 
@@ -472,11 +415,20 @@ def custom_scorer(ratings):
     normalized_score = weighted_sum / total
     print("custom scorer:", round(normalized_score, 3))
 
+def gaussian_scoring(y_true, y_pred,scale=33):
+
+    errors = np.abs(y_pred - y_true)  #calculates the absolute error betwee the predicted and true values (returns a list of absolute errors, one for each pair of (true, pred) value
+    scores = np.exp(-(errors/scale)**2) #calculates the scores for each error, using the gaussian function we defined. the scale parameter. think of it as sigma where the error size which my model still gets credit - beyond it error ramps up
+    #it isnt necessarily a population distribution, but it models how acceptable an error is
+    return np.mean(scores) # mean of scores
+
+
 @ignore_warnings(category=ConvergenceWarning)
 def run_elasticnet(X, Y, n_splits,test_size):
     # Split data
     # Custom scorer, replace with your own function if needed
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    scorer = make_scorer(gaussian_scoring, greater_is_better=True)
     # Pipeline: scaling + ElasticNet
     from sklearn.preprocessing import StandardScaler, PolynomialFeatures
     pipeline = Pipeline([
@@ -523,7 +475,7 @@ def run_elasticnet(X, Y, n_splits,test_size):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring='neg_root_mean_squared_error',
+        scoring=scorer,
         cv=kf,
         n_iter=2000,
         n_jobs=-1,
@@ -545,9 +497,10 @@ def run_elasticnet(X, Y, n_splits,test_size):
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
     y_pred = np.clip(y_pred, 0,100)
-    ratings = true_errors(y_true, y_pred)
-    print(ratings)
-    custom_scorer(ratings)
+    rating = gaussian_scoring(y_true, y_pred,scale=33)
+
+    dummy_RFR(X,Y,X_test,Y_test)
+    print("model gaussain", rating)
 
     calc_metrics(y_true, y_pred)
     plot_results(y_true, y_pred, 'elastic net ')

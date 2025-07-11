@@ -14,6 +14,8 @@ import glob
 from collections import defaultdict
 import logging
 
+
+logger = logging.getLogger("data_logger")
 config = None
 schrodinger_path = None
 struct_convert_path = None
@@ -36,7 +38,7 @@ def create_target_file(name,percent,working_dir):
     if not os.path.exists(f"{name}_target.txt"):
         with open(f"{name}_target.txt", "w") as f:
             f.write(f"{percent}")
-        logging.info(f"Created {name}_target.txt")
+        logger.info(f"Created {name}_target.txt")
 
 
 def load_lines(filepath):
@@ -163,7 +165,7 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
         waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
         split_mae_structconvert(f"{name}.mae",struct_convert_path) #split the .mae file into multiple files, one for each model, if a tautomer exists
 
-        logging.info(f"Created {name}.mae")
+        logger.info(f"Created {name}.mae")
 
 
 def get_split_files():
@@ -1050,7 +1052,7 @@ def create_new_descriptor(descriptor_name,og_name,working_dir):
 
 
 
-        logging.info(f"The {descriptor_name} descriptors for {og_name} are saved in {working_dir}/{og_name}_{descriptor_name}.csv")
+        logger.info(f"The {descriptor_name} descriptors for {og_name} are saved in {working_dir}/{og_name}_{descriptor_name}.csv")
         peptide_boltzmann = boltzmann_weighted_average(peptide_descriptors,working_dir,og_name)
         peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
         df = pd.DataFrame(peptide_boltzmann)
