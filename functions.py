@@ -11,8 +11,9 @@ import numpy as np
 import random
 from natsort import natsorted
 import glob
-from collections import defaultdict
 import logging
+from collections import defaultdict, Counter
+
 
 
 logger = logging.getLogger("data_logger")
@@ -33,12 +34,12 @@ def init_config(cfg):
 
 
 
-def create_target_file(name,percent,working_dir):
+def create_target_file(name,value,working_dir,target_file_name):
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}_target.txt"):
-        with open(f"{name}_target.txt", "w") as f:
-            f.write(f"{percent}")
-        logger.info(f"Created {name}_target.txt")
+    if not os.path.exists(f"{name}_{target_file_name}.txt"):
+        with open(f"{name}_{target_file_name}.txt", "w") as f:
+            f.write(f"{value}")
+        logger.info(f"Created {name}_{target_file_name}.txt")
 
 
 def load_lines(filepath):
@@ -69,7 +70,7 @@ def waiting_for_file(working_dir,name,wait_time) -> None:
             if new_size == prev_size:
                 break
             prev_size = new_size
-        print(f"waiting... for {name}")
+        logging.info(f"Waiting... for {name}")
         time.sleep(wait_time)
 
 
@@ -77,11 +78,13 @@ def split_xyz(working_dir,input_file,name,counter) -> int:
     """
     Takes an xyz with multple molecules and splits each into its own xyz file in working_dir ( a folder called {name} conformations. 
     Returns the number of molecules in the xyz file for indexing purposes. Assumes that xyz file has the following format (typical format): 
+    
     #  numAtoms
     # Name
     # Atom_1 X Y Z
     # etc..
     # Atom_numAtoms X Y Z
+
     :param working_dir: 
     :param input_file: 
     :param name: 
@@ -101,7 +104,7 @@ def split_xyz(working_dir,input_file,name,counter) -> int:
             if not any(lines):
                 break
             conformations.append(lines)
-    for i, conf in enumerate(conformations):
+    for _, conf in enumerate(conformations):
         output_file = os.path.join(working_dir, f"{name}_Conformation_{temp_count}.xyz")
         temp_count+=1
         with open(output_file, "w") as f:
@@ -127,7 +130,7 @@ def split_mae_structconvert(mae_file, structconvert_path):
         output_prefix
     ], check=True)
 
-    print(f"Split files created with prefix {output_prefix}_*.mae")
+    logging.info(f"Split files created with prefix {output_prefix}_*.mae")
 
 
 def smile_to_mae(smile_string,name,working_dir) -> None:
@@ -161,11 +164,16 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
             temp_file.write(f"{smile_string}\n")
 
     if not os.path.exists(f"{name}.mae"): #if there is no .mae file, create it - ready for maestro input
-        subprocess.run([lig_prep_path, "-ismi", f"{name}.smi", "-omae", f"{name}.mae"])
-        waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
-        split_mae_structconvert(f"{name}.mae",struct_convert_path) #split the .mae file into multiple files, one for each model, if a tautomer exists
+        try:
+            subprocess.run([lig_prep_path, "-ismi", f"{name}.smi", "-omae", f"{name}.mae"],check=True)
+            waiting_for_file(working_dir,f"{name}.mae",20) # wait until file is created
+            split_mae_structconvert(f"{name}.mae",struct_convert_path) #split the .mae file into multiple files, one for each model, if a tautomer exists
+            logger.info(f"Created {name}.mae")
 
-        logger.info(f"Created {name}.mae")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running LigPrep: {e}")
+            raise RuntimeError(f"Failed to convert SMILES to MAE for {name}. Please check the input SMILES string or the LigPrep installation.")
+        
 
 
 def get_split_files():
@@ -200,31 +208,33 @@ def run_confSearch(working_dir,wait_time) -> None:
             with open(conf_search_file, "w") as f:
                 f.write(f"INPUT_STRUCTURE_FILE {name}.mae\n")
                 f.write("JOB_TYPE CONFSEARCH\n")
-                f.write("CONFSEARCH_METHOD MCMM\n")
-                f.write("FORCE_FIELD OPLS_2005\n")
-                f.write("SOLVENT None\n")
-                f.write("DIELECTRIC_CONSTANT 1.0\n")
-                f.write("CHARGES_FROM Force field\n")
-                f.write("CUTOFF None\n")
-                f.write("MINI_METHOD PRCG\n")
-                f.write("MAXIMUM_ITERATION 2500\n")
-                f.write("CONVERGE_ON Gradient\n")
-                f.write("CONVERGENCE_THRESHOLD 0.05\n")
-                f.write("OUTCONFS_PER_SEARCH 10000\n")
-                f.write("CONFSEARCH_STEPS 1000\n")
-                f.write("CONFSEARCH_STEPS_PER_ROTATABLE 100\n")
-                f.write("ENERGY_WINDOW 104.6\n")
-                f.write("CONFSEARCH_TORSION_SAMPLING Intermediate\n")
+                f.write(f"CONFSEARCH_METHOD {config["data_generation"]["conf_search_settings"]["CONFSEARCH_METHOD"]}\n")
+                f.write(f"FORCE_FIELD {config["data_generation"]["conf_search_settings"]["FORCE_FIELD"]}\n")
+                f.write(f"SOLVENT {config["data_generation"]["conf_search_settings"]["SOLVENT"]}\n")
+                f.write(f"DIELECTRIC_CONSTANT {config["data_generation"]["conf_search_settings"]["DIELECTRIC_CONSTANT"]}\n")
+                f.write(f"CHARGES_FROM {config["data_generation"]["conf_search_settings"]["CHARGES_FROM"]}\n")
+                f.write(f"CUTOFF {config["data_generation"]["conf_search_settings"]["CUTOFF"]}\n")
+                f.write(f"MINI_METHOD {config["data_generation"]["conf_search_settings"]["MINI_METHOD"]}\n")
+                f.write(f"MAXIMUM_ITERATION {config["data_generation"]["conf_search_settings"]["MAXIMUM_ITERATIONS"]}\n")
+                f.write(f"CONVERGE_ON {config["data_generation"]["conf_search_settings"]["CONVERGE_ON"]}\n")
+                f.write(f"CONVERGENCE_THRESHOLD {config["data_generation"]["conf_search_settings"]["CONVERGENCE_THRESHOLD"]}\n")
+                f.write(f"OUTCONFS_PER_SEARCH {config["data_generation"]["conf_search_settings"]["OUTCONFS_PER_SEARCH"]}\n")
+                f.write(f"CONFSEARCH_STEPS {config["data_generation"]["conf_search_settings"]["CONFSEARCH_STEPS"]}\n")
+                f.write(f"CONFSEARCH_STEPS_PER_ROTATABLE {config["data_generation"]["conf_search_settings"]["CONFSEARCH_STEPS_PER_ROTATABLE"]}\n")
+                f.write(f"ENERGY_WINDOW {config["data_generation"]["conf_search_settings"]["ENERGY_WINDOW"]}\n")
+                f.write(f"CONFSEARCH_TORSION_SAMPLING {config["data_generation"]["conf_search_settings"]["CONFSEARCH_TORSION_SAMPLING"]}\n")
 
             logging.info(f"Created {name}, running confsearch now...")
         if not os.path.exists(f"{name}-out.mae"):
-            subprocess.run([
-                macro_model_path,
-                f"{name}"])
-            waiting_for_file(working_dir, f"{name}-out.mae", wait_time)
-
-            logging.info(f"Conformational search complete for {name}")
-
+            try:
+                subprocess.run([
+                    macro_model_path,
+                    f"{name}"],check=True)
+                waiting_for_file(working_dir, f"{name}-out.mae", wait_time)
+                logging.info(f"Conformational search complete for {name}")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Error running MacroModel: {e}")
+                raise RuntimeError(f"Failed to run conformational search for {name}. Please check the input file or the MacroModel installation.")
 
 def mae_to_pdb(working_dir) -> None:
     """
@@ -245,12 +255,16 @@ def mae_to_pdb(working_dir) -> None:
 
     for file in split_files:
         if not os.path.exists(f"{file}-out.pdb"):
-            subprocess.run([struct_convert_path, f"{file}-out.mae", f"{file}-out.pdb"])
-            waiting_for_file(working_dir, f"{file}-out.pdb", 30)
-            logging.info(f"Created {file}-out.pdb from conformational search")
-        if not os.path.exists(f"{file}-out-template.pdb"):
-            create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
-            logging.info(f"Created {file}-out-template.pdb to use for feature calculations")
+            try:
+                subprocess.run([struct_convert_path, f"{file}-out.mae", f"{file}-out.pdb"])
+                waiting_for_file(working_dir, f"{file}-out.pdb", 30)
+                logging.info(f"Created {file}-out.pdb from conformational search")
+                if not os.path.exists(f"{file}-out-template.pdb"):
+                    create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
+                    logging.info(f"Created {file}-out-template.pdb to use for feature calculations")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Error running structconvert: {e}")
+                raise RuntimeError(f"Failed to convert MAE to PDB for {file}. Please check the input file or the structconvert installation.")
 
 
 def pdb_to_xyz(working_dir) -> None:
@@ -265,14 +279,17 @@ def pdb_to_xyz(working_dir) -> None:
     :type working_dir: str
     :returns: None
     """
-    #convert to xyz
     os.chdir(working_dir)
     split_files = get_split_files()
     for f in split_files:
         if not os.path.exists(f"{f}-out.xyz"):
-            os.system(f"obabel -ipdb {f}-out.pdb -O {f}-out.xyz")
-            waiting_for_file(working_dir,f"{f}-out.xyz",15)
-            logging.info(f"Created {f}-out.xyz from {f}-out.pdb")
+            try:
+                subprocess.run(["obabel", "-ipdb", f"{f}-out.pdb", "-O", f"{f}-out.xyz"],check=True)           
+                waiting_for_file(working_dir,f"{f}-out.xyz",15)
+                logging.info(f"Created {f}-out.xyz from {f}-out.pdb")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Error running Open Babel: {e}")
+                raise RuntimeError(f"Failed to convert PDB to XYZ for {f}. Please check the input file or the Open Babel installation.")
 
 
 def xyz_to_individual_xyz(og_name,working_dir) -> None:
@@ -332,7 +349,7 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
                             all_energies.append((f"{og_name}_Conformation_{conf_counter}", energy))
                             conf_counter += 1
                         except ValueError:
-                            continue
+                            logging.info(f"ERROR: Could not convert energy value in line: {line.strip()}")
 
         # Sort by energy
         all_energies.sort(key=lambda x: x[1])
@@ -460,10 +477,9 @@ class AmideGroup:
                     if self.C in atom_ids:
                         self.Residue1 = atom_ids
                         break
-            """
-            hard coded 5 here?
-            """
-            if self.group_num == 5 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  #Check if we're the last residue. If we are, we want to set our second Residue. We cut the nitrogen and carbon bond right before the C-terminus
+            # if this is the last amide group, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
+            # this is the case where we have a C-terminus residue, which is the last residue in the peptide chain.
+            if self.group_num == config["data_generation"]["number_of_residues"]-1 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  
                 atom1 = self.N
                 atom2 = self.C
                 for bond in peptide.GetBonds():
@@ -549,7 +565,8 @@ def add_amides(input_peptide) -> list[AmideGroup]:
                     used_ids.append(amide_ids)
                     i += 1
 
-    return amide_groups
+    return amide_groups 
+    
 
 
 def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
@@ -631,7 +648,6 @@ def add_double_bonds_to_pdb(input_pdb) -> Chem.Mol:
     """
     peptide = Chem.MolFromPDBFile(input_pdb,removeHs=False)
     peptide = Chem.RWMol(peptide)
-    from collections import defaultdict, Counter
     with open(input_pdb, 'r') as infile:
         lines = infile.readlines()
         lines = [line.split() for line in lines]
@@ -691,7 +707,7 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
     os.chdir(working_dir)
     names = get_split_files()
 
-    if not os.path.exists(f"{og_name}-BWdistances.csv"):
+    if not os.path.exists(f"{og_name}-BWdistances.csv") or config["rerun"]["distances"]:
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
         peptide = peptides[0]
         amideGroups = add_amides(peptides[0])
@@ -701,12 +717,9 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
         distances = []
         for conformation_xyz in natsorted(os.listdir(temp_working_dir)):
             model_num = conformation_xyz.split("_")[-3]
-
             if is_int(model_num):
                 model_num = int(model_num)
                 peptide = peptides[model_num-1]
-
-            peptide.RemoveAllConformers()
 
             peptide = load_xyz_coords(peptide,f"{conformation_xyz}")
 
@@ -795,7 +808,7 @@ def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
     mol.AddConformer(conf, assignId=True)
     return mol
 
-def calculate_dihedrals(residue,mol):
+def calculate_dihedrals(residue,mol) -> list[float]:
     """
     Calculates dihedral angles for a given residue in a mol object. For the given possible residues, this works.
     :param residue: List of IDs that correspond to the residue in the mol object
@@ -889,9 +902,9 @@ def calculate_dihedrals(residue,mol):
     return None
 
 
-def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
+def boltzmann_weight_dihedrals(name,working_dir) -> None:
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWDihedralNormalized.csv"):
+    if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or config["rerun"]["dihedrals"]:
         peptide_normalized_dihedrals = []
         names = get_split_files()
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
@@ -965,7 +978,7 @@ def extract_boltzmann_weighted_dihedrals_normalized(name,working_dir):
         element = peptide_normalized_dihedrals[index]
         logging.info(f"Test matrix of dihedrals is Conformation number {index}:\n{element}")
 
-def boltzmann_weighted_average(values, working_dir, name):
+def boltzmann_weighted_average(values, working_dir, name) -> np.ndarray:
     # Load total energies
     pattern = os.path.join(working_dir, f"*{name}*energies*.csv")
     matching_files = glob.glob(pattern)
@@ -993,7 +1006,7 @@ def boltzmann_weighted_average(values, working_dir, name):
     return weighted_sum
 
 
-def smart_parse_token(token: str):
+def smart_parse_token(token: str) -> float | str:
     try:
         return float(token)
     except ValueError:
@@ -1021,10 +1034,10 @@ def remove_duplicates(smiles_lines_all,names_lines_all,percents_all) -> tuple[li
 
 
 
-def create_new_descriptor(descriptor_name,og_name,working_dir):
+def create_new_descriptor(descriptor_name,og_name,working_dir) -> None:
     os.chdir(working_dir)
     #not if want to make new one
-    if not os.path.exists(f"{og_name}_{descriptor_name}.csv"): #change to/from not
+    if not os.path.exists(f"{og_name}_{descriptor_name}.csv") or config["rerun"]["new_descriptors"]: 
 
         working_dir = os.getcwd()
         peptide_descriptors = []
@@ -1068,7 +1081,7 @@ def read_file(file_name) -> list[str]:
         return lines
 
 
-def make_submol_from_atom_ids(mol, atom_ids):
+def make_submol_from_atom_ids(mol, atom_ids) -> Chem.Mol:
     """
     Create a submolecule from a list of atom indices, preserving coordinates and properties.
 
@@ -1117,11 +1130,16 @@ def make_submol_from_atom_ids(mol, atom_ids):
         if atom.GetIsAromatic() and not atom.IsInRing():
             atom.SetIsAromatic(False)  # "Unmark" invalid aromatic atoms
 
-    Chem.SanitizeMol(new_mol)
+    try:
+
+        Chem.SanitizeMol(new_mol)
+    except ValueError as e:
+        logging.error(f"Error sanitizing submolecule: {e}")
+        raise RuntimeError(f"Failed to sanitize submolecule in make_submol_from_atom_ids. ")
     return new_mol
 
 
-def molecular_descriptors(peptide):
+def molecular_descriptors(peptide) -> list[list[float]]:
     descriptors_for_peptide = []
     descriptors_to_calculate = {
 

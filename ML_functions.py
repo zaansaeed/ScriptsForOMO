@@ -21,18 +21,48 @@ import glob
 import logging
 from joblib import dump, load
 
-
+config = None
+def init_config(cfg):
+    global config
+    config = cfg
+    return config
 ml_logger = logging.getLogger("ml")
 
-def calc_metrics(Y_test, y_pred):
+
+def gaussian_scoring(y_true, y_pred):
+
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    errors = np.abs(y_pred - y_true)
+
+    scores = np.zeros_like(errors)
+
+    # Piecewise for errors: 0 <= err <= 30
+    mask1 = (errors >= 0) & (errors <= 30)
+    scores[mask1] = 1 + 0.047 * (1 - np.exp(0.1 * errors[mask1]))
+
+    # Piecewise for errors: 30 < err <= 100
+    mask2 = (errors > 30) & (errors <= 100)
+    mu = 16.08
+    sigma = 4.21
+    scores[mask2] = 24.36 * np.exp(-((errors[mask2] - mu) ** 2) / (2 * sigma ** 2)) + 0.000001
+
+    return scores.mean()  # Scale to 0-100 range
+
+
+def calc_metrics(Y_test, y_pred) -> None:
     mse = mean_squared_error(Y_test, y_pred)
-    print("MSE: ", mse)
-    print("RMSE: ", np.sqrt(mse))
-    print("MAE:", mean_absolute_error(Y_test, y_pred))
-    print("R2: ", r2_score(Y_test, y_pred))
+    dict_metrics = {
+        "CUSTOM SCORE FUNCTION": gaussian_scoring(Y_test, y_pred),
+        "MSE": mse,
+        "RMSE": np.sqrt(mse),
+        "MAE": mean_absolute_error(Y_test, y_pred),
+        "R2": r2_score(Y_test, y_pred)
+    }
+    return dict_metrics
 
 
-def plot_results(true_labels_for_testing, y_pred, model):
+def plot_results(true_labels_for_testing, y_pred, model) -> None:
     plt.figure(figsize=(10, 6))
     plt.plot(true_labels_for_testing, 'o', label="Actual", markersize=6)
     plt.plot(y_pred, 'x', label="Predicted", markersize=6)
@@ -54,8 +84,7 @@ def plot_results(true_labels_for_testing, y_pred, model):
     plt.show()
 
 
-
-def filter_names(main_dictionary):
+def filter_names(main_dictionary) -> dict:
     best_entries = {}
 
     for name, (smiles, percent) in main_dictionary.items():
@@ -70,7 +99,8 @@ def filter_names(main_dictionary):
     filtered_dict = dict(natsorted(filtered_dict.items()))
     return filtered_dict
 
-def peptide_csv_to_array(name, feature, main_dir):
+
+def peptide_csv_to_array(name, feature, main_dir) -> np.ndarray:
     folder = os.path.join(main_dir, f"Peptide_{name}")
     pattern = os.path.join(folder, f"*{feature}.csv")
     matches = glob.glob(pattern)
@@ -78,7 +108,6 @@ def peptide_csv_to_array(name, feature, main_dir):
     feature_file = matches[0]
 
     data = pd.read_csv(feature_file, header=None, index_col=None)
-
     if feature == "BWDihedralNormalized":
         data = data.drop(columns=[2,3])
         data = np.array(data)
@@ -120,38 +149,6 @@ def create_model_data(names,features, main_dir,target_value):
     Y = np.array(Y)
     return X, Y
 
-def run_RFC(X,Y):
-    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
-    param_grid = {
-        'n_estimators': [50,75],
-        'max_depth': [None, 5, 10, 20],
-        'min_samples_split': [2, 5, 10],
-        'min_samples_leaf': [1, 2, 4],
-        'max_features': ['sqrt'],
-        'bootstrap': [True],
-    }
-    rfc = RandomForestClassifier( random_state=42)
-    grid_search = GridSearchCV(
-        estimator=rfc,
-        param_grid=param_grid,
-        cv=5,
-        scoring='f1_macro',  # or 'f1', 'roc_auc' depending on your goal
-        n_jobs=-1,  # use all available cores
-        verbose=1
-    )
-
-    grid_search.fit(X_train, y_train)
-
-    # Predict on test data
-    y_pred = grid_search.predict(X_test)
-
-    # Evaluate
-    print("Test accuracy:", accuracy_score(y_test, y_pred))
-    print("F1: ", f1_score(y_test, y_pred, average='macro'))
-    print(classification_report(y_test, y_pred))
-    plot_results(y_test, y_pred, 'rfc')
-
-
 
 def true_errors(Y_test, y_pred):
     ranges = {
@@ -171,37 +168,39 @@ def true_errors(Y_test, y_pred):
             ranges["Poor"] += 1
     return ranges
 
-def compute_weighted_success(true_errors, weights):
-    total = sum(true_errors.values())
-    score = sum(true_errors[cat] * weights.get(cat, 0) for cat in true_errors)
-    return score / total if total > 0 else 0
+
+def dummy_RFR(X,Y):
+
+   # X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
+
+    # Dummy model that always predicts the mean of y_train
+    dummy = DummyRegressor(strategy='mean')
+    dummy.fit(X, Y)
+    y_pred = dummy.predict(X)
+    y_pred = np.clip(y_pred, 0, 100)
+    # Predict and evaluate
+  
+    print("dummy r2:", r2_score(Y, y_pred))
+    print("dummy mse:", mean_squared_error(Y, y_pred))
+    print("dummy mae:", mean_absolute_error(Y, y_pred))
+    print("dummy gaussian score", gaussian_scoring(Y, y_pred))
 
 
-    # Custom weighted success scorer
-
-def custom_success_metric(y_true, y_pred):
-    errors = np.abs(y_pred - y_true)
-    score = 0
-    for err in errors:
-        if err <= 10:
-            score += 1.0
-        elif err <= 20:
-            score += 0.7
-        elif err <= 30:
-            score += 0.3
-
-        # Poor contributes 0
-    return score / len(y_true)
+def plot_Y_distribution(Y):
+    plt.hist(Y, bins=50, edgecolor='k')
+    plt.title('Distribution of Y values')
+    plt.xlabel('Y')
+    plt.ylabel('Frequency')
+    plt.show()
 
 
 def run_RFR(X, Y, n_splits,test_size):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-    from sklearn.decomposition import PCA
+    custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
+
     pipeline = Pipeline([
         ('model', RandomForestRegressor(random_state=42))
     ])
+    loo = LeaveOneOut()
 
     param_grid = {
         'model__n_estimators': [ 200,150,100,250,75],
@@ -213,100 +212,50 @@ def run_RFR(X, Y, n_splits,test_size):
         'model__max_leaf_nodes': [None, 10, 20, 50, 100],
         'model__criterion': ['squared_error', 'absolute_error', 'friedman_mse', 'poisson'],
     }
-    from sklearn.model_selection import RandomizedSearchCV
     search = RandomizedSearchCV(
-        estimator=pipeline,  # Your full pipeline with 'model' step
+        estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        n_iter=200,  # Number of parameter settings sampled (adjust for speed)
-        scoring='neg_root_mean_squared_error',
-        cv=kf,  # 5-fold CV (adjust if desired)
-        random_state=42,
+        scoring=custom_scorer,
+        cv=loo,
+        n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
     )
-
-    search.fit(X_train, Y_train)
+    # Fit model and search best params
+    search.fit(X, Y)
     best = search.best_estimator_
 
-    # Outputs
-    print("Best params:", search.best_params_)
-    print('best score:', search.best_score_)
-    #print("mean cv r2:", search.best_score_)
-    loo = LeaveOneOut()
+
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X_train):
-        x_train, x_test = X_train[train_index], X_train[test_index]
-        y_train, y_test = Y_train[train_index], Y_train[test_index]
+    for train_index, test_index in loo.split(X):
+        x_train, x_test = X[train_index], X[test_index]
+        y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
-    calc_metrics(y_true, y_pred)
-    plot_results(y_true, y_pred, 'random_forest ')
-    #dump(best, 'random_forest.joblib')
-    #np.savetxt("X.csv", X, delimiter=",")
-   # np.savetxt("y.csv", Y, delimiter=",")
+    y_pred = np.clip(y_pred, 0,100)
+    metrics = calc_metrics(y_true, y_pred)
+    
+    params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
+    line = f"{params_str},best_score={search.best_score_:.4f}"
+    ml_logger.info(line)
+    ml_logger.info("RFR Results:")
+    metric_line = ",".join(f"{key}={value:.4f}" for key, value in metrics.items())
+    ml_logger.info(metric_line)
+
+    plot_results(y_true, y_pred, f'RFR on {config["machine_learning"]["features_to_train_on"]}')
+    
+    if config["machine_learning"]["save_model"]:
+        dump(best, 'RFR_model.joblib')
+        np.savetxt("X.csv", X, delimiter=",")
+        np.savetxt("y.csv", Y, delimiter=",")
 
 
-def calculate_cv_scores(kf,X_train,Y_train,best_estimator):
-    scores = {
-        "Excellent": 0,
-        "Good": 0,
-        "Fair": 0,
-        "Poor": 0,
-    }
-    mean_CV_metric = 0
-    print("Success rates on CV folds")
-    for i, (train_index, test_index) in enumerate(kf.split(X_train)):
-        x_train, x_test = X_train[train_index], X_train[test_index]
-        y_train, y_test = Y_train[train_index], Y_train[test_index]
-        best_estimator.fit(x_train, y_train)
-        y_pred = best_estimator.predict(x_test)
-        y_pred = np.clip(y_pred, 0, 1)
-        temp_scores = true_errors(y_test, y_pred)
-        scores = {key: scores[key] + temp_scores[key] for key in scores}
-        plot_results(y_test, y_pred, i)
-        temp_metric=custom_success_metric(y_test, y_pred)
-        print(temp_scores,temp_metric )
-        mean_CV_metric += temp_metric
-    print("mean success rate on cv:", mean_CV_metric/kf.n_splits)
-
-def dummy_RFR(X,Y,X_test,Y_test):
-
-   # X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
-
-    # Dummy model that always predicts the mean of y_train
-    dummy = DummyRegressor(strategy='mean')
-    dummy.fit(X, Y)
-
-    # Predict and evaluate
-    y_pred = dummy.predict(X_test)
-    print("dummy regressor: ", custom_success_metric(Y_test, y_pred))
-    print("dummy r2:", r2_score(Y_test, y_pred))
-    print("dummy mse:", mean_squared_error(Y_test, y_pred))
-    print("dummy gaussian score", gaussian_scoring(Y_test, y_pred))
-
-def plot_scores_distribution(scores):
-    plt.bar(scores.keys(), scores.values())
-    plt.xlabel('Category')
-    plt.ylabel('Count')
-    plt.title('Category Distribution')
-    plt.show()
-
-
-def plot_Y_distribution(Y):
-
-    plt.hist(Y, bins=50, edgecolor='k')
-    plt.title('Distribution of Y values')
-    plt.xlabel('Y')
-    plt.ylabel('Frequency')
-    plt.show()
 
 def run_SVR(X, Y, n_splits,test_size):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
+    custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
+    loo = LeaveOneOut()
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('model', SVR())
@@ -320,116 +269,53 @@ def run_SVR(X, Y, n_splits,test_size):
         'model__epsilon': [0.01, 0.05, 0.1, 0.15, 0.2],  # Added smaller epsilon for sensitivity
         'model__coef0': [0.0, 0.3, 0.5, 0.7, 1.0],  # Include zero for no independent term influence
     }
-    from sklearn.model_selection import RandomizedSearchCV
+
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        n_iter=500,  # Number of parameter settings to sample
-        scoring='r2',
-        cv=5,
-        random_state=42,
+        scoring=custom_scorer,
+        cv=loo,
+        n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
-        verbose=2,
+        verbose=1,
     )
-
-    search.fit(X_train, Y_train)
+    # Fit model and search best params
+    search.fit(X, Y)
     best = search.best_estimator_
 
-    # Outputs
 
-
-    loo = LeaveOneOut()
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X_train):
-        x_train, x_test = X_train[train_index], X_train[test_index]
-        y_train, y_test = Y_train[train_index], Y_train[test_index]
+    for train_index, test_index in loo.split(X):
+        x_train, x_test = X[train_index], X[test_index]
+        y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
-    calc_metrics(y_true, y_pred)
-    plot_results(y_true, y_pred, 'svr ')
+    y_pred = np.clip(y_pred, 0,100)
+    metrics = calc_metrics(y_true, y_pred)
+    
+    params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
+    line = f"{params_str},best_score={search.best_score_:.4f}"
+    ml_logger.info(line)
+    ml_logger.info("SVR Results:")
+    metric_line = ",".join(f"{key}={value:.4f}" for key, value in metrics.items())
+    ml_logger.info(metric_line)
 
+    plot_results(y_true, y_pred, f'SVR on {config["machine_learning"]["features_to_train_on"]}')
+    
+    if config["machine_learning"]["save_model"]:
+        dump(best, 'SVR_model.joblib')
+        np.savetxt("X.csv", X, delimiter=",")
+        np.savetxt("y.csv", Y, delimiter=",")
 
-
-
-
-
-def run_GBR(X, Y, test_size, n_splits):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=test_size, random_state=42)
-    weighted_success_scorer = make_scorer(custom_success_metric, greater_is_better=True)
-    from xgboost import XGBRegressor
-
-    pipeline = Pipeline([
-        ('model', XGBRegressor(objective='reg:squarederror', random_state=42, verbosity=0))
-    ])
-
-    param_grid = {
-        'model__n_estimators': [50, 100, 200, 300, 500, 750, 1000],
-        'model__learning_rate': [0.001, 0.01, 0.05, 0.1, 0.2, 0.3],
-        'model__max_depth': [2, 3, 4, 5, 7, 10, 15],
-        'model__min_child_weight': [1, 3, 5, 10],
-        'model__subsample': [0.4, 0.6, 0.8, 1.0],
-        'model__colsample_bytree': [0.4, 0.6, 0.8, 1.0],
-        'model__gamma': [0, 0.1, 0.3, 0.5, 1.0],  # For pruning
-        'model__reg_alpha': [0.0, 0.001, 0.01, 0.1],  # L1 regularization
-        'model__reg_lambda': [0.0, 0.01, 0.1, 1.0],  # L2 regularization
-    }
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-    grid_search = RandomizedSearchCV(
-        estimator=pipeline,
-        param_distributions=param_grid,
-        scoring='neg_mean_squared_error',
-        cv=kf,
-        n_iter=200,
-        n_jobs=-1,
-        verbose=1
-    )
-
-    grid_search.fit(X_train, Y_train)
-    best = grid_search.best_estimator_
-
-    loo = LeaveOneOut()
-    y_pred = []
-    y_true = []
-    for train_index, test_index in loo.split(X_train):
-        x_train, x_test = X_train[train_index], X_train[test_index]
-        y_train, y_test = Y_train[train_index], Y_train[test_index]
-        best.fit(x_train, y_train)
-        y_pred.append(best.predict(x_test))
-        y_true.append(y_test)
-    print(calc_metrics(y_true, y_pred))
-    print(true_errors(y_true, y_pred))
-    print("\n")
-
-    plot_results(y_true, y_pred, 'gradient boosting')
-    #visualize_model(best, X, Y)
-    #calculate_cv_scores(kf, X_train, Y_train, best)
-
-
-def custom_scorer(ratings):
-    scores = {'Excellent': 1.0, 'Good': 0.66, 'Fair': 0.33, 'Poor': 0.0}
-    total = sum(ratings.values())
-    weighted_sum = sum(ratings[key] * scores[key] for key in ratings)
-    normalized_score = weighted_sum / total
-    print("custom scorer:", round(normalized_score, 3))
-
-def gaussian_scoring(y_true, y_pred,scale=33):
-
-    errors = np.abs(y_pred - y_true)  #calculates the absolute error betwee the predicted and true values (returns a list of absolute errors, one for each pair of (true, pred) value
-    scores = np.exp(-(errors/scale)**2) #calculates the scores for each error, using the gaussian function we defined. the scale parameter. think of it as sigma where the error size which my model still gets credit - beyond it error ramps up
-    #it isnt necessarily a population distribution, but it models how acceptable an error is
-    return np.mean(scores) # mean of scores
 
 
 @ignore_warnings(category=ConvergenceWarning)
-def run_elasticnet(X, Y, n_splits,test_size):
-    # Split data
-    # Custom scorer, replace with your own function if needed
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
-    scorer = make_scorer(gaussian_scoring, greater_is_better=True)
-    # Pipeline: scaling + ElasticNet
+def run_ElasticNet(X, Y):
+
+    custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
+
     from sklearn.preprocessing import StandardScaler, PolynomialFeatures
     pipeline = Pipeline([
        # ('poly', PolynomialFeatures(degree=3, include_bias=False)),
@@ -468,54 +354,44 @@ def run_elasticnet(X, Y, n_splits,test_size):
 
     }
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     # GridSearchCV setup
-    from sklearn.model_selection import RandomizedSearchCV
 
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring=scorer,
-        cv=kf,
-        n_iter=2000,
+        scoring=custom_scorer,
+        cv=loo,
+        n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
     )
     # Fit model and search best params
-    search.fit(X_train, Y_train)
+    search.fit(X, Y)
     best = search.best_estimator_
-    print("Best params:", search.best_params_)
-    print("best score:", search.best_score_)
-    # Outputs
+
 
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X_train):
-        x_train, x_test = X_train[train_index], X_train[test_index]
-        y_train, y_test = Y_train[train_index], Y_train[test_index]
+    for train_index, test_index in loo.split(X):
+        x_train, x_test = X[train_index], X[test_index]
+        y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
         y_pred.append(best.predict(x_test))
         y_true.append(y_test)
     y_pred = np.clip(y_pred, 0,100)
-    rating = gaussian_scoring(y_true, y_pred,scale=33)
+    metrics = calc_metrics(y_true, y_pred)
+    
+    params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
+    line = f"{params_str},best_score={search.best_score_:.4f}"
+    ml_logger.info(line)
+    ml_logger.info("ElasticNet Results:")
+    metric_line = ",".join(f"{key}={value:.4f}" for key, value in metrics.items())
+    ml_logger.info(metric_line)
 
-    dummy_RFR(X,Y,X_test,Y_test)
-    print("model gaussain", rating)
+    plot_results(y_true, y_pred, f'ElasticNet on {config["machine_learning"]["features_to_train_on"]}')
+    
+    if config["machine_learning"]["save_model"]:
+        dump(best, 'elasticnet_model.joblib')
+        np.savetxt("X.csv", X, delimiter=",")
+        np.savetxt("y.csv", Y, delimiter=",")
 
-    calc_metrics(y_true, y_pred)
-    plot_results(y_true, y_pred, 'elastic net ')
-    #dump(best, 'elasticnet_model.joblib')
-    #np.savetxt("X.csv", X, delimiter=",")
-    #np.savetxt("y.csv", Y, delimiter=",")
-
-def create_Y_ROG(main_dir,names):
-    Y= []
-    for name in names:
-        working_dir = os.path.join(main_dir, f"Peptide_{name}")
-        if os.path.isdir(working_dir):
-            os.chdir(working_dir)
-            for file in os.listdir(working_dir):  # working in folder
-                if file.endswith("RadiusOfGyration.csv"):
-                    data = pd.read_csv(file, header=None, index_col=None)
-                    Y.append(data.values.tolist()[0][0])
-    return np.array(Y)
