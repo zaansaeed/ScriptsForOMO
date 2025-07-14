@@ -1,5 +1,5 @@
 import yaml
-import functions as fs
+import functions as funcs
 import logging
 import os
 from natsort import natsorted
@@ -40,7 +40,7 @@ def main():
     ##initialize the config file
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
-        fs.init_config(config)
+        funcs.init_config(config)
         ML.init_config(config)
     
     main_dir = os.path.abspath(config["data_generation"]["main_dir"])
@@ -57,37 +57,39 @@ def main():
 
     os.chdir(main_dir)
 
-    smiles_lines = fs.load_lines(smiles_input_file)
-    names_lines = fs.load_lines(names_input_file)
-    targets_lines = fs.load_lines(targets_lines)
+    smiles_lines = funcs.load_lines(smiles_input_file)
+    names_lines = funcs.load_lines(names_input_file)
+    targets_lines = funcs.load_lines(targets_lines)
 
     main_dictionary = {}
     for i,name in enumerate(names_lines):
         main_dictionary[name] = (smiles_lines[i],targets_lines[i])
     main_dictionary = dict(natsorted(main_dictionary.items()))
 
-    for name, (smile, target) in main_dictionary.items():
-        if name != "pNP-43a" and name != "BICyP22":
-            if not os.path.exists(main_dir+f"/Peptide_{name}"):
-                os.mkdir(main_dir+f"/Peptide_{name}")
-                data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
-            
-            working_dir = main_dir+f"/Peptide_{name}"
-            logging.info(f"Processing {name} in {working_dir}")
-            fs.create_target_file(name,target,working_dir,config["machine_learning"]["target_name"])
-            fs.smile_to_mae(smile, name,working_dir)
-            fs.run_confSearch(working_dir,config["data_generation"]["wait_time_for_conf_search"])
-            fs.mae_to_pdb(working_dir)
-            fs.pdb_to_xyz(working_dir)
-            fs.xyz_to_individual_xyz(name,working_dir)
-            fs.extract_energies_to_csv(name,working_dir)
-            ######
-            fs.boltzmann_weight_distances(name,working_dir)
-            fs.boltzmann_weight_dihedrals(name,working_dir)
-            fs.create_new_descriptor("side_chain_descriptors",name,working_dir)
-            ######
-            data_logger.info(f"Finished processing {name}")
-            data_logger.info("------------------------------------------------------------------------")
+    if config["rerun"]["confsearch"]:
+        for name, (smile, target) in main_dictionary.items():
+            if name != "pNP-43a" and name != "BICyP22": ###temporary line to skip some peptides
+                if not os.path.exists(main_dir+f"/Peptide_{name}"):
+                    os.mkdir(main_dir+f"/Peptide_{name}")
+                    data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
+                
+                working_dir = main_dir+f"/Peptide_{name}"
+                logging.info(f"Processing {name} in {working_dir}")
+                funcs.create_target_file(name,target,working_dir,config["machine_learning"]["target_name"])
+                funcs.smile_to_mae(smile, name,working_dir)
+                funcs.run_confSearch(working_dir,config["data_generation"]["wait_time_for_conf_search"])
+                funcs.mae_to_pdb(working_dir)
+                funcs.pdb_to_xyz(working_dir)
+                funcs.xyz_to_individual_xyz(name,working_dir)
+                funcs.extract_energies_to_csv(name,working_dir)
+                data_logger.info(f"Finished processing {name}")
+                data_logger.info("------------------------------------------------------------------------")
+
+    ########## feature genereation
+    funcs.boltzmann_weight_distances(name,working_dir)
+    funcs.boltzmann_weight_dihedrals(name,working_dir)
+    funcs.create_new_descriptor("side_chain_descriptors",name,working_dir)
+    ##########
 
     main_dictionary = ML.filter_names(main_dictionary)
     names = [name for name in main_dictionary.keys()]
@@ -107,7 +109,6 @@ def main():
         "SVR": ML.run_SVR
     }
     
-
     if config["machine_learning"]["model_name"] in model_map:
         ml_logger.info(f"Starting {config["machine_learning"]["model_name"]} training...")
         model_function = model_map[config["machine_learning"]["model_name"]]

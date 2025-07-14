@@ -1,18 +1,14 @@
 rerun:
-  distances: False
-  dihedrals: False
-  new_descriptors: False
-
-
-
+  distances: false
+  dihedrals: false
+  new_descriptors: false
+  confsearch: false
 data_generation:
   schrodinger_path: /opt/schrodinger/suites2024-3
-  main_dir: G:\Shared drives\OMO Lab\Projects\OMO Lab - Zaan Saeed\Data\Peptides #contains smiles/percents .txt
+  main_dir: G:\Shared drives\OMO Lab\Projects\OMO Lab - Zaan Saeed\Data\Peptides
   smiles_input_file: all_peptides.smi
   names_input_file: all_names.txt
   target_input_file: all_percents.txt
-  ##################################
-  #conf_search_settings:
   wait_time_for_conf_search: 120
   conf_search_settings:
     CONFSEARCH_METHOD: MCMM
@@ -30,35 +26,12 @@ data_generation:
     CONFSEARCH_STEPS_PER_ROTATABLE: 100
     ENERGY_WINDOW: 104.6
     CONFSEARCH_TORSION_SAMPLING: Intermediate
-  ##################################
-
-
-  ################################## 
-  # peptide specific features      #
-  number_of_residues: 6            #
-  ##################################
-  
-
- 
-
-
-
-
-
-
-
+  number_of_residues: 6
 machine_learning:
-  target_name: "target" # Name of the target file to be created/used
-  model_name: "ElasticNet" # Name of the model to be used
-  scoring_function: "custom_scorer" # Scoring function to be used
-  n_iter: 100 # Number of iterations for the model training (RandomizedSearchCV)
+  target_name: target
+  model_name: ElasticNet
+  scoring_function: custom_scorer
+  n_iter: 100
   features_to_train_on:
-  - side_chain_descriptors
-  #- side_chain_descriptors
-  #- BWdistances
-  #- molecular_descriptors
-
-  
-  
-  save_model: False # Whether to save the model after training
-
+  - BWdistances
+  save_model: false

@@ -23,7 +23,7 @@ struct_convert_path = None
 macro_model_path = None
 lig_prep_path = None
 
-def init_config(cfg):
+def init_config(cfg) -> dict:
     global config, schrodinger_path, macro_model_path, struct_convert_path, lig_prep_path
     config = cfg
     schrodinger_path = config["data_generation"]["schrodinger_path"]
@@ -34,7 +34,7 @@ def init_config(cfg):
 
 
 
-def create_target_file(name,value,working_dir,target_file_name):
+def create_target_file(name,value,working_dir,target_file_name) -> None:
     os.chdir(working_dir)
     if not os.path.exists(f"{name}_{target_file_name}.txt"):
         with open(f"{name}_{target_file_name}.txt", "w") as f:
@@ -42,7 +42,7 @@ def create_target_file(name,value,working_dir,target_file_name):
         logger.info(f"Created {name}_{target_file_name}.txt")
 
 
-def load_lines(filepath):
+def load_lines(filepath) -> list[str]:
     with open(filepath, "r") as f:
         return [line.strip() for line in f]
 
@@ -112,7 +112,7 @@ def split_xyz(working_dir,input_file,name,counter) -> int:
     return temp_count
 
 
-def split_mae_structconvert(mae_file, structconvert_path):
+def split_mae_structconvert(mae_file, structconvert_path) -> None:
     """
     Splits a .mae file with multiple structures into multiple .mae files with 1 structure each. Appends "_model" to the end of the file name.
     :param mae_file:
@@ -122,13 +122,16 @@ def split_mae_structconvert(mae_file, structconvert_path):
 
     base_name = os.path.splitext(mae_file)[0]
     output_prefix = base_name + "_model.mae"
-
-    subprocess.run([
-        structconvert_path,
-        "-split-nstructures", "1",
-        mae_file,
-        output_prefix
-    ], check=True)
+    try:
+        subprocess.run([
+            structconvert_path,
+            "-split-nstructures", "1",
+            mae_file,
+            output_prefix
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error running structconvert: {e}")
+        raise RuntimeError(f"Failed to split MAE file {mae_file}. Please check the input file or the structconvert installation.")
 
     logging.info(f"Split files created with prefix {output_prefix}_*.mae")
 
@@ -176,7 +179,7 @@ def smile_to_mae(smile_string,name,working_dir) -> None:
         
 
 
-def get_split_files():
+def get_split_files() -> list[str]:
     """
     Returns a list of all the names that end with "_model" in the current working directory.
     :return:
@@ -551,6 +554,10 @@ def add_amides(input_peptide) -> list[AmideGroup]:
     matches3 = input_peptide.GetSubstructMatches(Chem.MolFromSmiles('NCC(=O)O')) # C terminus
     matches = matches1 + matches2 + matches3
 
+    if not matches:
+        raise Exception("No amide groups found in the input peptide.")  
+
+
     n_terminus = find_n_terminus(input_peptide)
     bfs_order = bfs_traversal(input_peptide, n_terminus)
 
@@ -606,39 +613,6 @@ def get_amide_distances(amide_groups,peptide) -> list[list[float]]:
     return distance_matrix
 
 
-def xyz_to_array(xyz_file) -> list[list[float]]:
-    """
-    Convert the content of an `.xyz` file into a list representation where the
-    coordinates of atoms are stored along with the number of atoms in the file.
-    The `.xyz` format is commonly used for molecular structure files containing
-    atomic positions.
-
-    This function reads the file, extracts the number of atoms, and iterates through
-    the lines containing atomic coordinate data, converting them into a list of
-    float values.
-
-    :param xyz_file: Path to the input `.xyz` file containing atomic coordinate data.
-    :type xyz_file: str
-    :return: A list where the first element is an integer indicating the number
-        of atoms, and subsequent elements are sublists, each containing the
-        x, y, and z coordinates of one atom.
-    :rtype: list[list[float]]
-    """
-    #oth index of coordinates is num atoms
-    #ith index of coordinates is ith atom ID i.e. index 1 is the first atom ID 1
-
-    with open(xyz_file, 'r', encoding= 'utf-8') as file:
-        lines = file.readlines()
-    num_atoms = int(lines[0].strip())
-    coordinates = []
-    coordinates.append(num_atoms)
-
-    for line in lines[2:]:
-        parts = line.split()
-        x, y, z = map(float, parts[1:4])
-        coordinates.append([x, y, z])
-    return coordinates
-
 
 def add_double_bonds_to_pdb(input_pdb) -> Chem.Mol:
     """
@@ -673,7 +647,11 @@ def add_double_bonds_to_pdb(input_pdb) -> Chem.Mol:
             bond.SetBondType(Chem.BondType.DOUBLE)
 
     peptide = peptide.GetMol()
-    Chem.SanitizeMol(peptide)
+    try:
+        Chem.SanitizeMol(peptide)
+    except ValueError as e:
+        logging.error(f"Error sanitizing molecule: {e}")
+        raise RuntimeError("Failed to sanitize the molecule after adding double bonds. Please check the input PDB file for correctness.")
     return peptide
 
 
@@ -802,7 +780,11 @@ def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
             if len(tokens) < 4:
                 continue
             x, y, z = map(float, tokens[1:4])
-            conf.SetAtomPosition(i, (x, y, z))
+            try:
+                conf.SetAtomPosition(i, (x, y, z))
+            except ValueError as e:
+                logging.error(f"Error setting atom position for line {i+1} in {xyz_path}: {e}")
+                raise RuntimeError(f"Failed to set atom position for line {i+1} in {xyz_path}. Please check the file format.")
 
     mol.RemoveAllConformers()
     mol.AddConformer(conf, assignId=True)
@@ -1131,11 +1113,10 @@ def make_submol_from_atom_ids(mol, atom_ids) -> Chem.Mol:
             atom.SetIsAromatic(False)  # "Unmark" invalid aromatic atoms
 
     try:
-
         Chem.SanitizeMol(new_mol)
     except ValueError as e:
         logging.error(f"Error sanitizing submolecule: {e}")
-        raise RuntimeError(f"Failed to sanitize submolecule in make_submol_from_atom_ids. ")
+        raise RuntimeError(f"Failed to sanitize submolecule in make_submol_from_atom_ids: {atom_ids}. Please check the input molecule for correctness.")
     return new_mol
 
 
