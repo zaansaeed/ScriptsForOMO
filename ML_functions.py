@@ -184,7 +184,7 @@ def true_errors(Y_test, y_pred):
     return ranges
 
 
-def dummy_RFR(X,Y):
+def dummy(X,Y):
 
    # X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
 
@@ -309,7 +309,6 @@ def run_SVR(X, Y, n_splits,test_size):
         y_true.append(y_test)
     y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
-    
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
     line = f"{params_str},best_score={search.best_score_:.4f}"
     ml_logger.info(line)
@@ -395,7 +394,7 @@ def run_ElasticNet(X, Y):
         y_true.append(y_test)
     y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
-    
+    dummy(X, Y)
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
     line = f"{params_str},best_score={search.best_score_:.4f}"
     ml_logger.info(line)
