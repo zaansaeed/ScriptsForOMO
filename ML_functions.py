@@ -209,7 +209,7 @@ def plot_Y_distribution(Y):
     plt.show()
 
 
-def run_RFR(X, Y, n_splits,test_size):
+def run_RFR(X, Y):
     custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
 
     pipeline = Pipeline([
@@ -268,7 +268,7 @@ def run_RFR(X, Y, n_splits,test_size):
 
 
 
-def run_SVR(X, Y, n_splits,test_size):
+def run_SVR(X, Y):
     custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
     loo = LeaveOneOut()
     pipeline = Pipeline([

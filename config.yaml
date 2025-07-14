@@ -4,7 +4,7 @@ rerun:
   new_descriptors: false
 data_generation:
   schrodinger_path: /opt/schrodinger/suites2024-3
-  main_dir: G:\Shared drives\OMO Lab\Projects\OMO Lab - Zaan Saeed\Data\Peptides
+  main_dir: /Users/zaansaeed/Desktop/NewPeptides
   smiles_input_file: all_peptides.smi
   names_input_file: all_names.txt
   target_input_file: all_percents.txt
@@ -29,9 +29,10 @@ data_generation:
 machine_learning:
   target_name: target
   model_name: ElasticNet
-  n_iter: 20
+  n_iter: 100
   features_to_train_on:
   - side_chain_descriptors
+  - BWDihedralNormalized
   save_model: false
   models:
   - RandomForestRegressor
