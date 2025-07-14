@@ -2,15 +2,14 @@ rerun:
   distances: false
   dihedrals: false
   new_descriptors: false
-  confsearch: false
 data_generation:
   schrodinger_path: /opt/schrodinger/suites2024-3
   main_dir: G:\Shared drives\OMO Lab\Projects\OMO Lab - Zaan Saeed\Data\Peptides
   smiles_input_file: all_peptides.smi
   names_input_file: all_names.txt
   target_input_file: all_percents.txt
-  wait_time_for_conf_search: 120
   conf_search_settings:
+    wait_time_for_conf_search: 120
     CONFSEARCH_METHOD: MCMM
     FORCE_FIELD: OPLS_2005
     SOLVENT: None
@@ -30,8 +29,11 @@ data_generation:
 machine_learning:
   target_name: target
   model_name: ElasticNet
-  scoring_function: custom_scorer
-  n_iter: 100
+  n_iter: 20
   features_to_train_on:
-  - BWdistances
+  - side_chain_descriptors
   save_model: false
+  models:
+  - RandomForestRegressor
+  - ElasticNet
+  - SVR

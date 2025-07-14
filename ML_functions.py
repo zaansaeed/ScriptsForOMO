@@ -20,6 +20,12 @@ from sklearn.pipeline import Pipeline
 import glob
 import logging
 from joblib import dump, load
+import streamlit as st
+from datetime import datetime
+from pathlib import Path
+
+
+
 
 config = None
 def init_config(cfg):
@@ -62,27 +68,36 @@ def calc_metrics(Y_test, y_pred) -> None:
     return dict_metrics
 
 
-def plot_results(true_labels_for_testing, y_pred, model) -> None:
-    plt.figure(figsize=(10, 6))
-    plt.plot(true_labels_for_testing, 'o', label="Actual", markersize=6)
-    plt.plot(y_pred, 'x', label="Predicted", markersize=6)
+def plot_results(true_labels_for_testing, y_pred, model,
+                 out_dir: str = "plots") -> str:
+    this_file = Path(__file__).resolve()
+    out_dir = os.path.join(this_file.parent, out_dir)
+    """Build the scatter/line plot, save it, and return the file path."""
+    # ---------- build the figure ----------
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(true_labels_for_testing, "o", label="Actual",  markersize=6)
+    ax.plot(y_pred,               "x", label="Predicted", markersize=6)
 
+    for i, (t, p) in enumerate(zip(true_labels_for_testing, y_pred)):
+        ax.plot([i, i], [t, p], "k--", alpha=0.6)  # vertical dashed line
 
-    for i, (true_val, pred_val) in enumerate(zip(true_labels_for_testing, y_pred)):
-        plt.plot([i, i], [true_val, pred_val], 'k--', alpha=0.6)  # Vertical dashed line
     all_vals = np.concatenate([true_labels_for_testing, y_pred])
-    ymin = all_vals.min() - 0.1
-    ymax = all_vals.max() + 0.1
-    plt.ylim(ymin, ymax)
+    ax.set_ylim(all_vals.min() - 0.1, all_vals.max() + 0.1)
 
-    plt.title(f"{model} - Peptides")
-    plt.xlabel("Peptide Index")
-    plt.ylabel("Target Value")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    ax.set(title=f"{model} - Peptides",
+           xlabel="Peptide index",
+           ylabel="Target value")
+    ax.legend()
+    ax.grid(True)
+    fig.tight_layout()
 
+    # ---------- save ----------
+    os.makedirs(out_dir, exist_ok=True)
+    timestamp   = datetime.now().strftime("%Y%m%d-%H%M%S")
+    file_name   = f"{model.replace(' ', '_')}_{timestamp}.png"
+    file_path   = os.path.join(out_dir, file_name)
+    fig.savefig(file_path, dpi=300, bbox_inches="tight", transparent=False)
+    plt.close(fig)   
 
 def filter_names(main_dictionary) -> dict:
     best_entries = {}
