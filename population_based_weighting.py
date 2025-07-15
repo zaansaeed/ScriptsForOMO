@@ -1,11 +1,11 @@
-from rdkit.Chem import Draw
-from rdkit.Chem.Draw import IPythonConsole
+
 from rdkit import Chem
-from rdkit.Chem import rdDistGeom
 from rdkit.Chem import rdMolAlign
-import rdkit
+import numpy as np
 import os
 from natsort import natsorted
+import concurrent.futures
+
 
 
 
@@ -52,26 +52,20 @@ mol = Chem.MolFromPDBFile('/Users/zaan/Library/CloudStorage/GoogleDrive-zasaeed@
 add_conformations_to_mol(mol,'/Users/zaan/Library/CloudStorage/GoogleDrive-zasaeed@g.hmc.edu/Shared drives/OMO Lab/Projects/OMO Lab - ML - Zaan Saeed/Data/Peptides/Peptide_C7R1/C7R1_Conformations')
 
 
-dists = []
-
-import concurrent.futures
+n_conformers = 393  # Adjust based on your number of conformers
+rmsd_matrix = np.zeros((n_conformers, n_conformers))  # This will store the RMSD values in a lower triangular matrix
 
 def calculate_rmsd(i, j):
-    rmsd = rdMolAlign.GetBestRMS(mol, mol, i, j)  # align the i-th conformation to the j-th conformation
-    return (i, j, rmsd)
-
+    # Calculate RMSD for conformers i and j
+    rdMolAlign.AlignMol(mol,mol,i,j)
+    rmsd = rdMolAlign.GetBestRMS(mol, mol, i, j,numThreads=10,)
+    return rmsd
 
 # Using ThreadPoolExecutor to parallelize RMSD calculation
-"""with concurrent.futures.ThreadPoolExecutor() as executor:
-    # Submit tasks for all pairs of conformers
-    futures = [executor.submit(calculate_rmsd, i, j) for i in range(393) for j in range(i)]
 
-    # Retrieve results as they finish
-    for future in concurrent.futures.as_completed(futures):
-        i, j, rmsd = future.result()
-        dists.append(rmsd)
-        print(f"RMSD between conformation {i + 1} and conformation {j + 1}: {rmsd}")
-"""
-
-conformer_10 = mol.GetConformer(10)
-print(conformer_10.GetPositions())
+for i in range(n_conformers):
+    for j in range(i):
+        rsmd = calculate_rmsd(i, j)
+        rmsd_matrix[i, j] = rsmd
+        print(f"conformation {i}-{j}: {rsmd}")
+np.savetxt("rmsd_matrix.txt", rmsd_matrix, delimiter=",")
