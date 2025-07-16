@@ -525,11 +525,15 @@ def find_n_terminus(input_peptide) -> int:
     """
     n_terminus_residue_normal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)'))
     n_terminus_residue_abnormal = input_peptide.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)'))
+    n_terminus_methylated = input_peptide.GetSubstructMatches(Chem.MolFromSmarts("[NH1]([CH3])[C]"))
+
     try:
         if n_terminus_residue_normal:
             return n_terminus_residue_normal[0][0]
-        else:
+        elif n_terminus_residue_abnormal:
             return n_terminus_residue_abnormal[0][0]
+        else:
+            return n_terminus_methylated[0][0]
     except IndexError:
         raise Exception("No N-terminus found in the input peptide.")
 
@@ -1137,15 +1141,31 @@ def molecular_descriptors(peptide) -> list[list[float]]:
 def side_chain_descriptors(amidegroups,peptide):
     descriptors_for_peptide = []
     descriptors_to_calculate = {
-        "RadiusOfGyration": Descriptors3D.RadiusOfGyration,
+        # Your existing descriptors
+        "Radius": Descriptors3D.RadiusOfGyration,
         "Asphericity": Descriptors3D.Asphericity,
         "InertialShapeFactor": Descriptors3D.InertialShapeFactor,
         "Eccentricity": Descriptors3D.Eccentricity,
         "SpherocityIndex": Descriptors3D.SpherocityIndex,
-        "MolWt": Descriptors.MolWt,
+
+        # Molecular properties
+        "MolLogP": Descriptors.MolLogP,  # Partition coefficient
+        "MolMR": Descriptors.MolMR,  # Molar refractivity
+        "HeavyAtomCount": Descriptors.HeavyAtomCount,
+        "NumHAcceptors": Descriptors.NumHAcceptors,  # H-bond acceptors
+        "NumHDonors": Descriptors.NumHDonors,  # H-bond donors
+        "NumRotatableBonds": Descriptors.NumRotatableBonds,
+        "NumAromaticRings": Descriptors.NumAromaticRings,
+        "RingCount": Descriptors.RingCount,
+
+        # Electronic descriptors
+        "MaxEStateIndex": Descriptors.MaxEStateIndex,
+        "MinEStateIndex": Descriptors.MinEStateIndex,
+        "MaxAbsEStateIndex": Descriptors.MaxAbsEStateIndex,
+        "MinAbsEStateIndex": Descriptors.MinAbsEStateIndex,
+
+
     }
-
-
     for amide_group in amidegroups:
         residue_ids = amide_group.getResidue1()
         residue = make_submol_from_atom_ids(peptide, residue_ids)

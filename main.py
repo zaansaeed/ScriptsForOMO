@@ -67,7 +67,7 @@ def main():
     main_dictionary = dict(natsorted(main_dictionary.items()))
 
     for name, (smile, target) in main_dictionary.items():
-        if name != "pNP-43a" and name != "BICyP22": ###temporary line to skip some peptides
+        if "*" not in smile: ###temporary line to skip some peptides
             if not os.path.exists(main_dir+f"/Peptide_{name}"):
                 os.mkdir(main_dir+f"/Peptide_{name}")
                 data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")

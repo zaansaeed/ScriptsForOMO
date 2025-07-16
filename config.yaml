@@ -4,15 +4,15 @@ rerun:
   new_descriptors: false
 data_generation:
   schrodinger_path: /opt/schrodinger/suites2024-3
-  main_dir: /Users/zaansaeed/Desktop/NewPeptides
+  main_dir: /Users/zaansaeed/Desktop/PermeabilityDataset
   smiles_input_file: all_peptides.smi
-  names_input_file: all_names.txt
-  target_input_file: all_percents.txt
+  names_input_file: all_ids.txt
+  target_input_file: all_permeabilities.txt
   conf_search_settings:
     wait_time_for_conf_search: 120
     CONFSEARCH_METHOD: MCMM
     FORCE_FIELD: OPLS_2005
-    SOLVENT: None
+    SOLVENT: Water
     DIELECTRIC_CONSTANT: 1.0
     CHARGES_FROM: Force field
     CUTOFF: None
@@ -29,10 +29,10 @@ data_generation:
 machine_learning:
   target_name: target
   model_name: ElasticNet
-  n_iter: 100
+  n_iter: 200
   features_to_train_on:
   - side_chain_descriptors
-  - BWDihedralNormalized
+  - BWdistances
   save_model: false
   models:
   - RandomForestRegressor

@@ -52,14 +52,25 @@ def gaussian_scoring(y_true, y_pred):
     mu = 16.08
     sigma = 4.21
     scores[mask2] = 24.36 * np.exp(-((errors[mask2] - mu) ** 2) / (2 * sigma ** 2)) + 0.000001
+    return np.mean(scores)
 
-    return scores.mean()  # Scale to 0-100 range
+def new_adjusted_metrics(y_true,y_pred):
+    errors = np.abs(y_pred - y_true)
+    scores = gaussian_scoring(y_true, y_pred)
+    weighted_scores = [error*(1-weight) for error,weight in zip(errors,scores)]
+    weighted_scores = np.array(weighted_scores)
+    dict_metrics = {
+        "NEW MSE": np.mean(weighted_scores**2),
+        "NEW RMSE": np.sqrt(np.mean(weighted_scores**2)),
+        "NEW MAE": np.mean(np.abs(weighted_scores)),
+    }
+    return dict_metrics
 
 
-def calc_metrics(Y_test, y_pred) -> None:
+def calc_metrics(Y_test, y_pred):
     mse = mean_squared_error(Y_test, y_pred)
     dict_metrics = {
-        "CUSTOM SCORE FUNCTION": gaussian_scoring(Y_test, y_pred),
+        "CUSTOM SCORE FUNCTION": gaussian_scoring(Y_test, y_pred).mean(),
         "MSE": mse,
         "RMSE": np.sqrt(mse),
         "MAE": mean_absolute_error(Y_test, y_pred),
@@ -82,7 +93,7 @@ def plot_results(true_labels_for_testing, y_pred, model,
         ax.plot([i, i], [t, p], "k--", alpha=0.6)  # vertical dashed line
 
     all_vals = np.concatenate([true_labels_for_testing, y_pred])
-    ax.set_ylim(all_vals.min() - 0.1, all_vals.max() + 0.1)
+    ax.set_ylim(0,100)
 
     ax.set(title=f"{model} - Peptides",
            xlabel="Peptide index",
@@ -187,18 +198,25 @@ def true_errors(Y_test, y_pred):
 def dummy(X,Y):
 
    # X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size= test_size,random_state=42)
-
     # Dummy model that always predicts the mean of y_train
     dummy = DummyRegressor(strategy='mean')
-    dummy.fit(X, Y)
+    dummy.fit(X,Y)
     y_pred = dummy.predict(X)
-    y_pred = np.clip(y_pred, 0, 100)
+    y_true = Y
+
+    #scores = cross_val_score(dummy_model, X, y, cv=kf, scoring="accuracy")  # Example: accuracy for classification problems
+
     # Predict and evaluate
   
-    print("dummy r2:", r2_score(Y, y_pred))
-    print("dummy mse:", mean_squared_error(Y, y_pred))
-    print("dummy mae:", mean_absolute_error(Y, y_pred))
+    print("dummy r2:", r2_score(y_true, y_pred))
+    print("dummy mse:", mean_squared_error(y_true, y_pred))
+    print("dummy rmse:", np.sqrt(mean_squared_error(y_true, y_pred)))
+    print("dummy mae:", mean_absolute_error(y_true, y_pred))
     print("dummy gaussian score", gaussian_scoring(Y, y_pred))
+    plot_results(y_true, y_pred, f'Dummy on {config["machine_learning"]["features_to_train_on"]}')
+    #print("DUMMY NEW METRICS:")
+    #print(new_adjusted_metrics(y_true, y_pred))
+
 
 
 def plot_Y_distribution(Y):
@@ -211,7 +229,7 @@ def plot_Y_distribution(Y):
 
 def run_RFR(X, Y):
     custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
-
+    kf = KFold(n_splits=10, shuffle=True, random_state=42)
     pipeline = Pipeline([
         ('model', RandomForestRegressor(random_state=42))
     ])
@@ -230,8 +248,8 @@ def run_RFR(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        scoring=custom_scorer,
-        cv=loo,
+        scoring='r2',
+        cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
@@ -247,8 +265,8 @@ def run_RFR(X, Y):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
-        y_pred.append(best.predict(x_test))
-        y_true.append(y_test)
+        y_pred.extend(best.predict(x_test))
+        y_true.extend(y_test)
     y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     
@@ -275,7 +293,7 @@ def run_SVR(X, Y):
         ('scaler', StandardScaler()),
         ('model', SVR())
     ])
-
+    kf = KFold(n_splits=10, shuffle=True, random_state=42)
     param_grid = {
         'model__kernel': ['poly', 'rbf', 'sigmoid'],
         'model__degree': [2, 3],  # Added degree=2 for comparison
@@ -288,8 +306,8 @@ def run_SVR(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        scoring=custom_scorer,
-        cv=loo,
+        scoring='r2',
+        cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
@@ -298,6 +316,7 @@ def run_SVR(X, Y):
     search.fit(X, Y)
     best = search.best_estimator_
 
+    loo = LeaveOneOut()
 
     y_pred = []
     y_true = []
@@ -305,10 +324,11 @@ def run_SVR(X, Y):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
-        y_pred.append(best.predict(x_test))
-        y_true.append(y_test)
+        y_pred.extend(best.predict(x_test))
+        y_true.extend(y_test)
     y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
+    print(metrics)
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
     line = f"{params_str},best_score={search.best_score_:.4f}"
     ml_logger.info(line)
@@ -317,7 +337,7 @@ def run_SVR(X, Y):
     ml_logger.info(metric_line)
 
     plot_results(y_true, y_pred, f'SVR on {config["machine_learning"]["features_to_train_on"]}')
-    
+
     if config["machine_learning"]["save_model"]:
         dump(best, 'SVR_model.joblib')
         np.savetxt("X.csv", X, delimiter=",")
@@ -327,13 +347,14 @@ def run_SVR(X, Y):
 
 @ignore_warnings(category=ConvergenceWarning)
 def run_ElasticNet(X, Y):
-
     custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
-
+    kf = KFold(n_splits=10, shuffle=True, random_state=42)
     from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+    from sklearn.decomposition import PCA
+
     pipeline = Pipeline([
        # ('poly', PolynomialFeatures(degree=3, include_bias=False)),
-
+       # ('pca', PCA(n_components=0.9)),  # Keep 95% of variance
         ('model', ElasticNet(max_iter=10000))
     ])
     loo = LeaveOneOut()
@@ -373,8 +394,8 @@ def run_ElasticNet(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring=custom_scorer,
-        cv=loo,
+        scoring='r2',
+        cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
@@ -390,11 +411,19 @@ def run_ElasticNet(X, Y):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
-        y_pred.append(best.predict(x_test))
-        y_true.append(y_test)
+        pred = best.predict(x_test)
+        y_pred.extend(pred)
+        y_true.extend(y_test)
+
     y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     dummy(X, Y)
+    #print("ELASTICNET NEW METRICS:")
+    #print(new_adjusted_metrics(y_true, y_pred))
+    print("ELASTICNET OLD METRICS:")
+    print(metrics)
+    plot_results(y_true, y_pred, f'ElasticNet on {config["machine_learning"]["features_to_train_on"]}')
+
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
     line = f"{params_str},best_score={search.best_score_:.4f}"
     ml_logger.info(line)
@@ -402,8 +431,7 @@ def run_ElasticNet(X, Y):
     metric_line = ",".join(f"{key}={value:.4f}" for key, value in metrics.items())
     ml_logger.info(metric_line)
 
-    plot_results(y_true, y_pred, f'ElasticNet on {config["machine_learning"]["features_to_train_on"]}')
-    
+
     if config["machine_learning"]["save_model"]:
         dump(best, 'elasticnet_model.joblib')
         np.savetxt("X.csv", X, delimiter=",")
