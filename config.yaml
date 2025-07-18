@@ -12,7 +12,7 @@ data_generation:
     wait_time_for_conf_search: 120
     CONFSEARCH_METHOD: MCMM
     FORCE_FIELD: OPLS_2005
-    SOLVENT: Water
+    SOLVENT: None
     DIELECTRIC_CONSTANT: 1.0
     CHARGES_FROM: Force field
     CUTOFF: None
@@ -28,11 +28,10 @@ data_generation:
   number_of_residues: 6
 machine_learning:
   target_name: target
-  model_name: ElasticNet
+  model_name: RandomForestRegressor
   n_iter: 200
   features_to_train_on:
   - side_chain_descriptors
-  - BWdistances
   save_model: false
   models:
   - RandomForestRegressor

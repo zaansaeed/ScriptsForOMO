@@ -67,7 +67,9 @@ def main():
     main_dictionary = dict(natsorted(main_dictionary.items()))
 
     for name, (smile, target) in main_dictionary.items():
-        if "*" not in smile: ###temporary line to skip some peptides
+        from rdkit import Chem
+        mol = Chem.MolFromSmiles(smile)
+        if "*" not in smile and funcs.find_n_terminus(mol) is not None and len(funcs.add_amides(mol)) >= config["data_generation"]["number_of_residues"]-1: ###temporary line to skip some peptides, skip ones that dont have n_terminus
             if not os.path.exists(main_dir+f"/Peptide_{name}"):
                 os.mkdir(main_dir+f"/Peptide_{name}")
                 data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
@@ -89,6 +91,13 @@ def main():
             funcs.boltzmann_weight_dihedrals(name,working_dir)
             funcs.create_new_descriptor("side_chain_descriptors",name,working_dir)
             ##########
+        else:
+            file_path = f"{main_dir}/skipped_peptides.txt"
+            with open(file_path, "a+") as outfile:
+                outfile.seek(0)  # Move to start to read contents
+                contents = [line.strip() for line in outfile.readlines()]
+                if name not in contents:
+                    outfile.write(f"{name}\n")  # Write without leading newline
 
     main_dictionary = ML.filter_names(main_dictionary)
     names = [name for name in main_dictionary.keys()]
@@ -112,7 +121,6 @@ def main():
         ml_logger.info(f"Starting {config["machine_learning"]["model_name"]} training...")
         model_function = model_map[config["machine_learning"]["model_name"]]
         model_function(X, Y)
-        
 if __name__ == "__main__":
     main()
 

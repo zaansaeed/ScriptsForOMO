@@ -22,14 +22,18 @@ schrodinger_path = None
 struct_convert_path = None
 macro_model_path = None
 lig_prep_path = None
+main_dir = None
+number_residues = None
 
 def init_config(cfg) -> dict:
-    global config, schrodinger_path, macro_model_path, struct_convert_path, lig_prep_path
+    global config, schrodinger_path, macro_model_path, struct_convert_path, lig_prep_path, main_dir, number_residues
     config = cfg
     schrodinger_path = config["data_generation"]["schrodinger_path"]
     struct_convert_path = schrodinger_path + "/utilities/structconvert"
     macro_model_path = schrodinger_path + "/macromodel"
     lig_prep_path = schrodinger_path + "/ligprep"
+    main_dir = config["data_generation"]["main_dir"]
+    number_residues = config["data_generation"]["number_of_residues"]
     return config
 
 
@@ -70,7 +74,7 @@ def waiting_for_file(working_dir,name,wait_time) -> None:
             if new_size == prev_size:
                 break
             prev_size = new_size
-        logging.info(f"Waiting... for {name}")
+        logger.info(f"Waiting... for {name}")
         time.sleep(wait_time)
 
 
@@ -130,10 +134,10 @@ def split_mae_structconvert(mae_file, structconvert_path) -> None:
             output_prefix
         ], check=True)
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error running structconvert: {e}")
+        logger.error(f"Error running structconvert: {e}")
         raise RuntimeError(f"Failed to split MAE file {mae_file}. Please check the input file or the structconvert installation.")
 
-    logging.info(f"Split files created with prefix {output_prefix}_*.mae")
+    logger.info(f"Split files created with prefix {output_prefix}_*.mae")
 
 
 def smile_to_mae(smile_string,name,working_dir) -> None:
@@ -227,16 +231,16 @@ def run_confSearch(working_dir,wait_time) -> None:
                 f.write(f"ENERGY_WINDOW {config["data_generation"]["conf_search_settings"]["ENERGY_WINDOW"]}\n")
                 f.write(f"CONFSEARCH_TORSION_SAMPLING {config["data_generation"]["conf_search_settings"]["CONFSEARCH_TORSION_SAMPLING"]}\n")
 
-            logging.info(f"Created {name}, running confsearch now...")
+            logger.info(f"Created {name}, running confsearch now...")
         if not os.path.exists(f"{name}-out.mae"):
             try:
                 subprocess.run([
                     macro_model_path,
                     f"{name}"],check=True)
                 waiting_for_file(working_dir, f"{name}-out.mae", wait_time)
-                logging.info(f"Conformational search complete for {name}")
+                logger.info(f"Conformational search complete for {name}")
             except subprocess.CalledProcessError as e:
-                logging.error(f"Error running MacroModel: {e}")
+                logger.error(f"Error running MacroModel: {e}")
                 raise RuntimeError(f"Failed to run conformational search for {name}. Please check the input file or the MacroModel installation.")
 
 def mae_to_pdb(working_dir) -> None:
@@ -261,12 +265,12 @@ def mae_to_pdb(working_dir) -> None:
             try:
                 subprocess.run([struct_convert_path, f"{file}-out.mae", f"{file}-out.pdb"])
                 waiting_for_file(working_dir, f"{file}-out.pdb", 30)
-                logging.info(f"Created {file}-out.pdb from conformational search")
+                logger.info(f"Created {file}-out.pdb from conformational search")
                 if not os.path.exists(f"{file}-out-template.pdb"):
                     create_template_model(f"{file}-out.pdb",f"{file}-out-template.pdb")
-                    logging.info(f"Created {file}-out-template.pdb to use for feature calculations")
+                    logger.info(f"Created {file}-out-template.pdb to use for feature calculations")
             except subprocess.CalledProcessError as e:
-                logging.error(f"Error running structconvert: {e}")
+                logger.error(f"Error running structconvert: {e}")
                 raise RuntimeError(f"Failed to convert MAE to PDB for {file}. Please check the input file or the structconvert installation.")
 
 
@@ -289,9 +293,9 @@ def pdb_to_xyz(working_dir) -> None:
             try:
                 subprocess.run(["obabel", "-ipdb", f"{f}-out.pdb", "-O", f"{f}-out.xyz"],check=True)           
                 waiting_for_file(working_dir,f"{f}-out.xyz",15)
-                logging.info(f"Created {f}-out.xyz from {f}-out.pdb")
+                logger.info(f"Created {f}-out.xyz from {f}-out.pdb")
             except subprocess.CalledProcessError as e:
-                logging.error(f"Error running Open Babel: {e}")
+                logger.error(f"Error running Open Babel: {e}")
                 raise RuntimeError(f"Failed to convert PDB to XYZ for {f}. Please check the input file or the Open Babel installation.")
 
 
@@ -318,7 +322,7 @@ def xyz_to_individual_xyz(og_name,working_dir) -> None:
             num_confs = split_xyz(temp_working_dir,working_dir+f"/{f}-out.xyz",f,conf_counter)
             conf_counter+=num_confs
         os.chdir(working_dir)
-        logging.info(f"Created {og_name}_Conformations folder with all conformations")
+        logger.info(f"Created {og_name}_Conformations folder with all conformations")
 
 
 def extract_energies_to_csv(og_name,working_dir) -> None:
@@ -352,7 +356,7 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
                             all_energies.append((f"{og_name}_Conformation_{conf_counter}", energy))
                             conf_counter += 1
                         except ValueError:
-                            logging.info(f"ERROR: Could not convert energy value in line: {line.strip()}")
+                            logger.info(f"ERROR: Could not convert energy value in line: {line.strip()}")
 
         # Sort by energy
         all_energies.sort(key=lambda x: x[1])
@@ -360,7 +364,7 @@ def extract_energies_to_csv(og_name,working_dir) -> None:
         # Save to total_energies.csv
         df = pd.DataFrame(all_energies, columns=["Name", "Energy"])
         df.to_csv(f"{og_name}_total_energies.csv", index=False)
-        logging.info(f"Created {og_name}_total_energies.csv")
+        logger.info(f"Created {og_name}_total_energies.csv")
 
 
 def bfs_traversal(mol, starting_id) -> list[int]:
@@ -482,7 +486,7 @@ class AmideGroup:
                         break
             # if this is the last amide group, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
             # this is the case where we have a C-terminus residue, which is the last residue in the peptide chain.
-            if self.group_num == config["data_generation"]["number_of_residues"]-1 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:  
+            if self.group_num == number_residues-1 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:
                 atom1 = self.N
                 atom2 = self.C
                 for bond in peptide.GetBonds():
@@ -511,7 +515,7 @@ class AmideGroup:
         return self.H
 
 
-def find_n_terminus(input_peptide) -> int:
+def find_n_terminus(input_peptide) -> int | None:
     """
     Identifies and returns the index of the N-terminus in a given peptide structure. The N-terminus
     residue can exist in either a normal or an abnormal form. The function searches the peptide
@@ -530,15 +534,15 @@ def find_n_terminus(input_peptide) -> int:
     try:
         if n_terminus_residue_normal:
             return n_terminus_residue_normal[0][0]
-        elif n_terminus_residue_abnormal:
-            return n_terminus_residue_abnormal[0][0]
-        else:
+        elif n_terminus_methylated:
             return n_terminus_methylated[0][0]
+        else:
+            return n_terminus_residue_abnormal[0][0]
     except IndexError:
-        raise Exception("No N-terminus found in the input peptide.")
+        return None
 
 
-def add_amides(input_peptide) -> list[AmideGroup]:
+def add_amides(input_peptide) -> list[AmideGroup] | None:
     """
     Identifies amide groups in the given peptide molecule and returns them as a list of AmideGroup
     objects. This function searches for specific substructure patterns indicative of amide groups.
@@ -562,7 +566,9 @@ def add_amides(input_peptide) -> list[AmideGroup]:
         raise Exception("No amide groups found in the input peptide.")  
 
 
+
     n_terminus = find_n_terminus(input_peptide)
+
     bfs_order = bfs_traversal(input_peptide, n_terminus)
 
     i = 1
@@ -654,7 +660,7 @@ def add_double_bonds_to_pdb(input_pdb) -> Chem.Mol:
     try:
         Chem.SanitizeMol(peptide)
     except ValueError as e:
-        logging.error(f"Error sanitizing molecule: {e}")
+        logger.error(f"Error sanitizing molecule: {e}")
         raise RuntimeError("Failed to sanitize the molecule after adding double bonds. Please check the input PDB file for correctness.")
     return peptide
 
@@ -693,7 +699,6 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
         peptide = peptides[0]
         amideGroups = add_amides(peptides[0])
-
         temp_working_dir = working_dir + f"/{og_name}_Conformations"
         os.chdir(temp_working_dir) #working in conforamtions folder
         distances = []
@@ -711,11 +716,10 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
-        logging.info(f"The BW distance matrix for {og_name} is saved in {working_dir}/{og_name}-BWdistances.csv")
+        logger.info(f"The BW distance matrix for {og_name} is saved in {working_dir}/{og_name}-BWdistances.csv")
         index = random.randint(0, len(distances) - 1)
         element = distances[index]
-
-        logging.info(f"Test matrix of distances is Conformation number {index}:\n{element}")
+        logger.info(f"Test matrix of distances is Conformation number {index}:\n{element}")
 
 
 
@@ -754,7 +758,7 @@ def create_template_model(input_pdb, output_pdb) -> None:
     with open(output_pdb, 'w') as outfile:
         outfile.writelines(first_model)
 
-    logging.info(f"The template model was created and saved in {output_pdb}.")
+    logger.info(f"The template model was created and saved in {output_pdb}.")
 
 
 def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
@@ -787,7 +791,7 @@ def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
             try:
                 conf.SetAtomPosition(i, (x, y, z))
             except ValueError as e:
-                logging.error(f"Error setting atom position for line {i+1} in {xyz_path}: {e}")
+                logger.error(f"Error setting atom position for line {i+1} in {xyz_path}: {e}")
                 raise RuntimeError(f"Failed to set atom position for line {i+1} in {xyz_path}. Please check the file format.")
 
     mol.RemoveAllConformers()
@@ -897,6 +901,7 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
         mol = peptides[0]
         #add embeding?
         n_terminus = find_n_terminus(mol)
+
         nitrogen_order = bfs_traversal(mol, n_terminus)
         n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
         n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
@@ -959,10 +964,10 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
         boltzmann_matrix = boltzmann_matrix.reshape(len(boltzmann_matrix),-1)
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{name}-BWDihedralNormalized.csv', index=False, header=False)
-        logging.info(f"The BW dihedral matrix for {name} is saved in {working_dir}/{name}-BWDihedralNormalized.csv")
+        logger.info(f"The BW dihedral matrix for {name} is saved in {working_dir}/{name}-BWDihedralNormalized.csv")
         index = random.randint(0, len(peptide_normalized_dihedrals) - 1)
         element = peptide_normalized_dihedrals[index]
-        logging.info(f"Test matrix of dihedrals is Conformation number {index}:\n{element}")
+        logger.info(f"Test matrix of dihedrals is Conformation number {index}:\n{element}")
 
 def boltzmann_weighted_average(values, working_dir, name) -> np.ndarray:
     # Load total energies
@@ -1032,7 +1037,6 @@ def create_new_descriptor(descriptor_name,og_name,working_dir) -> None:
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in get_split_files()]
         mol = peptides[0]
         amide_groups = add_amides(mol)
-
 
         for conformation_xyz in natsorted(os.listdir(f"{og_name}_Conformations")):
             model_num = conformation_xyz.split("_")[-3]
@@ -1119,7 +1123,7 @@ def make_submol_from_atom_ids(mol, atom_ids) -> Chem.Mol:
     try:
         Chem.SanitizeMol(new_mol)
     except ValueError as e:
-        logging.error(f"Error sanitizing submolecule: {e}")
+        logger.error(f"Error sanitizing submolecule: {e}")
         raise RuntimeError(f"Failed to sanitize submolecule in make_submol_from_atom_ids: {atom_ids}. Please check the input molecule for correctness.")
     return new_mol
 
@@ -1157,6 +1161,7 @@ def side_chain_descriptors(amidegroups,peptide):
         "NumRotatableBonds": Descriptors.NumRotatableBonds,
         "NumAromaticRings": Descriptors.NumAromaticRings,
         "RingCount": Descriptors.RingCount,
+        "TPSA": Descriptors.TPSA,
 
         # Electronic descriptors
         "MaxEStateIndex": Descriptors.MaxEStateIndex,

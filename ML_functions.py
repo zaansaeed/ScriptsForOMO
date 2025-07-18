@@ -93,7 +93,10 @@ def plot_results(true_labels_for_testing, y_pred, model,
         ax.plot([i, i], [t, p], "k--", alpha=0.6)  # vertical dashed line
 
     all_vals = np.concatenate([true_labels_for_testing, y_pred])
-    ax.set_ylim(0,100)
+    buffer = 0.3  # adjust the margin as needed
+    y_min = all_vals.min() - buffer
+    y_max = all_vals.max() + buffer
+    ax.set_ylim(y_min, y_max)
 
     ax.set(title=f"{model} - Peptides",
            xlabel="Peptide index",
@@ -135,7 +138,7 @@ def peptide_csv_to_array(name, feature, main_dir) -> np.ndarray:
 
     data = pd.read_csv(feature_file, header=None, index_col=None)
     if feature == "BWDihedralNormalized":
-        data = data.drop(columns=[2,3])
+        #data = data.drop(columns=[2,3])
         data = np.array(data)
         data = data[:, :-1]
         data[:, -1] = np.round(data[:, -1])
@@ -156,6 +159,7 @@ def create_model_data(names,features, main_dir,target_value):
                 os.chdir(working_dir)
 
                 X_temp = []
+                print(name)
                 for feature in features:
                     x_feat = peptide_csv_to_array(name, feature, main_dir)
                     X_temp.append(x_feat)
@@ -213,7 +217,6 @@ def dummy(X,Y):
     print("dummy rmse:", np.sqrt(mean_squared_error(y_true, y_pred)))
     print("dummy mae:", mean_absolute_error(y_true, y_pred))
     print("dummy gaussian score", gaussian_scoring(Y, y_pred))
-    plot_results(y_true, y_pred, f'Dummy on {config["machine_learning"]["features_to_train_on"]}')
     #print("DUMMY NEW METRICS:")
     #print(new_adjusted_metrics(y_true, y_pred))
 
@@ -236,14 +239,14 @@ def run_RFR(X, Y):
     loo = LeaveOneOut()
 
     param_grid = {
-        'model__n_estimators': [ 200,150,100,250,75],
-        'model__max_depth': [None, 5, 10, 20,15,8],
+        'model__n_estimators': [ 400,500,600],
+        'model__max_depth': [None,15,20,25,30],
         'model__min_samples_split': [2, 5, 3,4],
         'model__min_samples_leaf': [1, 2, 4, 10, 20],
         'model__max_features': ['sqrt', 'log2', 0.2, 0.4, 0.6, 0.8, 1.0],
         'model__bootstrap': [True],
         'model__max_leaf_nodes': [None, 10, 20, 50, 100],
-        'model__criterion': ['squared_error', 'absolute_error', 'friedman_mse', 'poisson'],
+        'model__criterion': ['squared_error', 'absolute_error'],
     }
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
@@ -261,13 +264,13 @@ def run_RFR(X, Y):
 
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X):
+    for train_index, test_index in kf.split(X):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
         y_pred.extend(best.predict(x_test))
         y_true.extend(y_test)
-    y_pred = np.clip(y_pred, 0,100)
+    #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
@@ -320,13 +323,13 @@ def run_SVR(X, Y):
 
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X):
+    for train_index, test_index in kf.split(X):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
         y_pred.extend(best.predict(x_test))
         y_true.extend(y_test)
-    y_pred = np.clip(y_pred, 0,100)
+    #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     print(metrics)
     params_str = ",".join(f"{key}={value}" for key, value in search.best_params_.items())
@@ -337,7 +340,7 @@ def run_SVR(X, Y):
     ml_logger.info(metric_line)
 
     plot_results(y_true, y_pred, f'SVR on {config["machine_learning"]["features_to_train_on"]}')
-
+    os.chdir(config["data_generation"]["main_dir"])
     if config["machine_learning"]["save_model"]:
         dump(best, 'SVR_model.joblib')
         np.savetxt("X.csv", X, delimiter=",")
@@ -407,7 +410,7 @@ def run_ElasticNet(X, Y):
 
     y_pred = []
     y_true = []
-    for train_index, test_index in loo.split(X):
+    for train_index, test_index in kf.split(X):
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
         best.fit(x_train, y_train)
@@ -415,7 +418,7 @@ def run_ElasticNet(X, Y):
         y_pred.extend(pred)
         y_true.extend(y_test)
 
-    y_pred = np.clip(y_pred, 0,100)
+    #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     dummy(X, Y)
     #print("ELASTICNET NEW METRICS:")
@@ -431,6 +434,7 @@ def run_ElasticNet(X, Y):
     metric_line = ",".join(f"{key}={value:.4f}" for key, value in metrics.items())
     ml_logger.info(metric_line)
 
+    os.chdir(config["data_generation"]["main_dir"])
 
     if config["machine_learning"]["save_model"]:
         dump(best, 'elasticnet_model.joblib')

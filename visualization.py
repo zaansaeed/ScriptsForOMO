@@ -4,13 +4,15 @@ from natsort import natsorted
 from rdkit.Chem import AllChem
 from rdkit import Chem
 import py3Dmol
-from functions import add_amides
+import functions as funcs
 import tempfile
 import webbrowser
 import os
 import re
 from joblib import load
 import csv
+
+
 
 def visualize_model(pipeline, X):
     model = pipeline.named_steps['model']
@@ -201,7 +203,7 @@ def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges,descriptor_fu
                     idx += 1
             elif isinstance(shape,tuple):
                 for i in range(shape[0]):
-                    for j in descriptor_funcs.keys():
+                    for j in descriptor_funcs:
                         key = f"{feature_type}_{i+1}_property_{j}"
                         feature_index_map[f"Feature_{idx + 1}_{key}"] = feature_ranges[f"Feature {idx + 1}"]
                         idx += 1
@@ -308,10 +310,9 @@ def visualize_molecule_with_highlights(mol, highlight_atoms,feature_name):
     webbrowser.open('file://' + os.path.realpath(temp_path))
 
 
-def visualize_peptide_and_save_features(feature_map,arbitrary_peptide_smiles,feature_to_examine):
-    peptide = Chem.MolFromSmiles(arbitrary_peptide_smiles)
-    peptide = Chem.AddHs(peptide)
-    amide_groups = add_amides(peptide)
+def visualize_peptide_and_save_features(feature_map,pdb_file_of_template,feature_to_examine):
+    peptide = funcs.add_double_bonds_to_pdb(pdb_file_of_template)
+    amide_groups = funcs.add_amides(peptide)
     pb = Chem.MolToMolBlock(peptide)
     feature = [key for key in feature_map if feature_to_examine in key]
     feature_in_map = feature[0]
@@ -354,17 +355,25 @@ def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     model = load(path_to_model)
     X = pd.read_csv(path_to_X).values
     y = pd.read_csv(path_to_y).values.ravel()
-    visualize_model(model,X,y)
+    visualize_model(model,X)
     _, _, feature_ranges = analyze_feature_ranges(model, X)
     feature_blocks = [
-        ("side_chain", (6,10)),
-        ("distance", (5,5))
+        ("side_chain", (6,18)),
     ]
     # r1c1
-    smiles = "CC(C)[C@H](C(N[C@H](CCC(OCC=C)=O)C(NC(C)(C)C(N(c(cc(cc1)C(NC)=O)c1N1C)C1=O)=O)=O)=O)N(C)C([C@H](Cc1c[nH]c2c1cccc2)NC(CN(C)C(CCN)=O)=O)=O"
+    pdb_file = "template.pdb"
     feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges,descriptor_funcs)
     print(feature_map)
-    visualize_peptide_and_save_features(feature_map, smiles, "distance_hydrogen_4_to_oxygen_1")
+    visualize_peptide_and_save_features(feature_map, pdb_file, "Feature_1_side_chain_1_property_Radius")
 
 if __name__ == "__main__":
-    visualize("elasticnet_model.joblib","X.csv","y.csv")
+    import yaml
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    funcs.init_config(config)
+    descriptor_funcs = ['Radius', 'Asphericity', 'InertialShapeFactor', 'Eccentricity', 'SpherocityIndex',
+ 'MolLogP', 'MolMR', 'HeavyAtomCount', 'NumHAcceptors', 'NumHDonors',
+ 'NumRotatableBonds', 'NumAromaticRings', 'RingCount', 'TPSA',
+ 'MaxEStateIndex', 'MinEStateIndex', 'MaxAbsEStateIndex', 'MinAbsEStateIndex']
+    visualize("RFR_model.joblib","X.csv","y.csv",descriptor_funcs)
