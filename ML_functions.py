@@ -234,28 +234,30 @@ def run_RFR(X, Y):
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     pipeline = Pipeline([
-        ('model', RandomForestRegressor(random_state=42))
+        ('scalar', StandardScaler()),
+        ('model', RandomForestRegressor(random_state=42,verbose=1,n_jobs=-1))
     ])
     loo = LeaveOneOut()
 
     param_grid = {
-        'model__n_estimators': [ 400,300,350,450],
-        'model__max_depth': [None,15,20,22,23,19    ],
-        'model__min_samples_split': [2, 5, 3,4],
-        'model__min_samples_leaf': [1, 2, 4, 10, 20],
-        'model__max_features': ['sqrt', 'log2', 0.2, 0.4, 0.6, 0.8, 1.0],
+        'model__n_estimators': [550],
+        'model__max_depth': [22],
+        'model__min_samples_split': [4],
+        'model__min_samples_leaf': [2],
+        'model__max_features': [ 0.8],
         'model__bootstrap': [True],
-        'model__max_leaf_nodes': [None, 10, 20, 50, 100],
-        'model__criterion': ['squared_error', 'absolute_error'],
+        'model__max_leaf_nodes': [None],
+        'model__criterion': ['absolute_error'],
     }
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        scoring='neg_mean_absolute_error',
+        scoring='r2',
         cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
+        random_state=42
     )
     # Fit model and search best params
     search.fit(X_train, Y_train)
@@ -274,7 +276,7 @@ def run_RFR(X, Y):
     ml_logger.info(metric_line)
 
     plot_results(y_true, y_pred, f'RFR on {config["machine_learning"]["features_to_train_on"]}')
-    os.chdir(config["data_generation"]["main_dir"])
+    os.path.dirname(os.path.abspath(__file__))
     if config["machine_learning"]["save_model"]:
         dump(best, 'RFR_model.joblib')
         np.savetxt("X.csv", X, delimiter=",")
@@ -284,7 +286,7 @@ def run_RFR(X, Y):
 
 def run_SVR(X, Y):
     custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
-    loo = LeaveOneOut()
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('model', SVR())
@@ -302,26 +304,21 @@ def run_SVR(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        scoring='r2',
+        scoring='neg_mean_absolute_error',
         cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
     )
     # Fit model and search best params
-    search.fit(X, Y)
+    search.fit(X_train, Y_train)
     best = search.best_estimator_
 
     loo = LeaveOneOut()
 
-    y_pred = []
-    y_true = []
-    for train_index, test_index in kf.split(X):
-        x_train, x_test = X[train_index], X[test_index]
-        y_train, y_test = Y[train_index], Y[test_index]
-        best.fit(x_train, y_train)
-        y_pred.extend(best.predict(x_test))
-        y_true.extend(y_test)
+    y_pred = best.predict(X_test)
+    y_true = Y_test
+
     #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     print(metrics)
@@ -347,7 +344,7 @@ def run_ElasticNet(X, Y):
     kf = KFold(n_splits=10, shuffle=True, random_state=42)
     from sklearn.preprocessing import StandardScaler, PolynomialFeatures
     from sklearn.decomposition import PCA
-
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     pipeline = Pipeline([
        # ('poly', PolynomialFeatures(degree=3, include_bias=False)),
        # ('pca', PCA(n_components=0.9)),  # Keep 95% of variance
@@ -390,26 +387,20 @@ def run_ElasticNet(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as ElasticNet
         param_distributions=param_grid,
-        scoring='r2',
+        scoring='neg_mean_absolute_error',
         cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
     )
     # Fit model and search best params
-    search.fit(X, Y)
+    search.fit(X_train, Y_train)
     best = search.best_estimator_
 
 
-    y_pred = []
-    y_true = []
-    for train_index, test_index in kf.split(X):
-        x_train, x_test = X[train_index], X[test_index]
-        y_train, y_test = Y[train_index], Y[test_index]
-        best.fit(x_train, y_train)
-        pred = best.predict(x_test)
-        y_pred.extend(pred)
-        y_true.extend(y_test)
+    y_pred = best.predict(X_test)
+    y_true = Y_test
+
 
     #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)

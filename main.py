@@ -67,7 +67,7 @@ def main():
         main_dictionary[name] = (smiles_lines[i],targets_lines[i])
     main_dictionary = dict(natsorted(main_dictionary.items()))
 
-    """for name, (smile, target) in main_dictionary.items():
+    for name, (smile, target) in main_dictionary.items():
         from rdkit import Chem
         mol = Chem.MolFromSmiles(smile)
         if "*" not in smile and funcs.find_n_terminus(mol) is not None and len(funcs.add_amides(mol)) >= config["data_generation"]["number_of_residues"]-1: ###temporary line to skip some peptides, skip ones that dont have n_terminus
@@ -99,7 +99,7 @@ def main():
                 contents = [line.strip() for line in outfile.readlines()]
                 if name not in contents:
                     outfile.write(f"{name}\n")  # Write without leading newline
-    """
+
     main_dictionary = ML.filter_names(main_dictionary)
     names = [name for name in main_dictionary.keys()]
 

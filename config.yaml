@@ -29,7 +29,7 @@ data_generation:
 machine_learning:
   target_name: target
   model_name: RandomForestRegressor
-  n_iter: 50
+  n_iter: 1
   features_to_train_on:
   - side_chain_descriptors
   save_model: true

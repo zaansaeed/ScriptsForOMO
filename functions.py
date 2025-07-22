@@ -1159,7 +1159,6 @@ def side_chain_descriptors(amidegroups,peptide):
         "NumHAcceptors": Descriptors.NumHAcceptors,  # H-bond acceptors
         "NumHDonors": Descriptors.NumHDonors,  # H-bond donors
         "NumRotatableBonds": Descriptors.NumRotatableBonds,
-        "NumAromaticRings": Descriptors.NumAromaticRings,
         "RingCount": Descriptors.RingCount,
         "TPSA": Descriptors.TPSA,
 
