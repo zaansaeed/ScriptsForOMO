@@ -5,6 +5,7 @@ import os
 from natsort import natsorted
 import ML_functions as ML
 
+
 def setup_logging_data(directory_of_log):
     logger = logging.getLogger("data_logger")
     logger.setLevel(logging.INFO)
@@ -66,14 +67,14 @@ def main():
         main_dictionary[name] = (smiles_lines[i],targets_lines[i])
     main_dictionary = dict(natsorted(main_dictionary.items()))
 
-    for name, (smile, target) in main_dictionary.items():
+    """for name, (smile, target) in main_dictionary.items():
         from rdkit import Chem
         mol = Chem.MolFromSmiles(smile)
         if "*" not in smile and funcs.find_n_terminus(mol) is not None and len(funcs.add_amides(mol)) >= config["data_generation"]["number_of_residues"]-1: ###temporary line to skip some peptides, skip ones that dont have n_terminus
             if not os.path.exists(main_dir+f"/Peptide_{name}"):
                 os.mkdir(main_dir+f"/Peptide_{name}")
                 data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
-            
+            print(name)
             working_dir = main_dir+f"/Peptide_{name}"
             logging.info(f"Processing {name} in {working_dir}")
             funcs.create_target_file(name,target,working_dir,config["machine_learning"]["target_name"])
@@ -98,7 +99,7 @@ def main():
                 contents = [line.strip() for line in outfile.readlines()]
                 if name not in contents:
                     outfile.write(f"{name}\n")  # Write without leading newline
-
+    """
     main_dictionary = ML.filter_names(main_dictionary)
     names = [name for name in main_dictionary.keys()]
 
@@ -106,11 +107,20 @@ def main():
     target_value = config["machine_learning"]["target_name"]
 
     X, Y = ML.create_model_data(names,features,main_dir,target_value)
+    X = X.tolist()
+    Y = Y.tolist()
+
+    for i in reversed(range(len(X))):
+        if Y[i] == -10.0:
+            del X[i]
+            del Y[i]
+    import numpy as np
+    X = np.array(X)
+    Y = np.array(Y)
     ml_logger.info(f"X shape: {X.shape}, Y shape: {Y.shape}")
     ml_logger.info(f"Features: {features}")
     ml_logger.info(f"Target value: {target_value}")
-    
-    
+
     model_map = {
         "RandomForestRegressor": ML.run_RFR,
         "ElasticNet": ML.run_ElasticNet,

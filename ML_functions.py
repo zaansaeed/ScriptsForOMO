@@ -157,6 +157,11 @@ def create_model_data(names,features, main_dir,target_value):
             if name in names:
                 working_dir = os.path.join(main_dir, folder)
                 os.chdir(working_dir)
+                # Load target
+                target_file = os.path.join(working_dir, f"{name}_{target_value}.txt")
+                with open(target_file) as f:
+                    for line in f:
+                        Y.append(float(line.split()[0]))
 
                 X_temp = []
                 print(name)
@@ -167,14 +172,9 @@ def create_model_data(names,features, main_dir,target_value):
                 # Stack features into single row for this peptide
                 X_all.append(np.concatenate(X_temp))
 
-                # Load target
-                target_file = os.path.join(working_dir, f"{name}_{target_value}.txt")
-                with open(target_file) as f:
-                    for line in f:
-                        Y.append(float(line.split()[0]))
+
             else:
                 pass
-
     X = np.array(X_all)
     Y = np.array(Y)
     return X, Y
@@ -231,16 +231,16 @@ def plot_Y_distribution(Y):
 
 
 def run_RFR(X, Y):
-    custom_scorer = make_scorer(gaussian_scoring, greater_is_better=True)
-    kf = KFold(n_splits=10, shuffle=True, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
     pipeline = Pipeline([
         ('model', RandomForestRegressor(random_state=42))
     ])
     loo = LeaveOneOut()
 
     param_grid = {
-        'model__n_estimators': [ 400,500,600],
-        'model__max_depth': [None,15,20,25,30],
+        'model__n_estimators': [ 400,300,350,450],
+        'model__max_depth': [None,15,20,22,23,19    ],
         'model__min_samples_split': [2, 5, 3,4],
         'model__min_samples_leaf': [1, 2, 4, 10, 20],
         'model__max_features': ['sqrt', 'log2', 0.2, 0.4, 0.6, 0.8, 1.0],
@@ -251,25 +251,18 @@ def run_RFR(X, Y):
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
         param_distributions=param_grid,
-        scoring='r2',
+        scoring='neg_mean_absolute_error',
         cv=kf,
         n_iter=config["machine_learning"]["n_iter"],
         n_jobs=-1,
         verbose=1,
     )
     # Fit model and search best params
-    search.fit(X, Y)
+    search.fit(X_train, Y_train)
     best = search.best_estimator_
 
-
-    y_pred = []
-    y_true = []
-    for train_index, test_index in kf.split(X):
-        x_train, x_test = X[train_index], X[test_index]
-        y_train, y_test = Y[train_index], Y[test_index]
-        best.fit(x_train, y_train)
-        y_pred.extend(best.predict(x_test))
-        y_true.extend(y_test)
+    y_true = Y_test
+    y_pred = best.predict(X_test)
     #y_pred = np.clip(y_pred, 0,100)
     metrics = calc_metrics(y_true, y_pred)
     
@@ -281,7 +274,7 @@ def run_RFR(X, Y):
     ml_logger.info(metric_line)
 
     plot_results(y_true, y_pred, f'RFR on {config["machine_learning"]["features_to_train_on"]}')
-    
+    os.chdir(config["data_generation"]["main_dir"])
     if config["machine_learning"]["save_model"]:
         dump(best, 'RFR_model.joblib')
         np.savetxt("X.csv", X, delimiter=",")
