@@ -486,7 +486,7 @@ class AmideGroup:
                         break
             # if this is the last amide group, we want to cut the bond that connects this residue to the rest of the molecule and save those ids
             # this is the case where we have a C-terminus residue, which is the last residue in the peptide chain.
-            if self.group_num == number_residues-1 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:
+            if self.group_num == 6-1 and not self.getIDs() in [amide.getIDs() for amide in amide_groups]:
                 atom1 = self.N
                 atom2 = self.C
                 for bond in peptide.GetBonds():
@@ -714,6 +714,7 @@ def boltzmann_weight_distances(og_name,working_dir) -> None:
         os.chdir(working_dir)
 
         boltzmann_matrix = boltzmann_weighted_average(distances, working_dir,og_name)
+        print(len(boltzmann_matrix))
         df = pd.DataFrame(boltzmann_matrix)
         df.to_csv(working_dir+f'/{og_name}-BWdistances.csv', index=False, header=False)
         logger.info(f"The BW distance matrix for {og_name} is saved in {working_dir}/{og_name}-BWdistances.csv")
@@ -894,7 +895,7 @@ def calculate_dihedrals(residue,mol) -> list[float]:
 
 def boltzmann_weight_dihedrals(name,working_dir) -> None:
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or config["rerun"]["dihedrals"]:
+    if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or  config["rerun"]["dihedrals"] :
         peptide_normalized_dihedrals = []
         names = get_split_files()
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
@@ -903,12 +904,19 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
         n_terminus = find_n_terminus(mol)
 
         nitrogen_order = bfs_traversal(mol, n_terminus)
+        print(nitrogen_order)
+        possible_amides = mol.GetSubstructMatches(Chem.MolFromSmarts('[N]C[C](=O)'))
+        possible_nitrogens = [possible_amides[i][0] for i in range(len(possible_amides))]
+        print(possible_nitrogens)
+
+
         n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
         n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
         normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
         abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
         all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
         all_residues = list(all_residues)
+
         ##########################
         # get rid of asparagine
         query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
@@ -1054,10 +1062,10 @@ def create_new_descriptor(descriptor_name,og_name,working_dir) -> None:
 
 
 
-
         logger.info(f"The {descriptor_name} descriptors for {og_name} are saved in {working_dir}/{og_name}_{descriptor_name}.csv")
         peptide_boltzmann = boltzmann_weighted_average(peptide_descriptors,working_dir,og_name)
         peptide_boltzmann = peptide_boltzmann.reshape(len(peptide_boltzmann),-1)
+        print(len(peptide_boltzmann[0]))
         df = pd.DataFrame(peptide_boltzmann)
         df.to_csv(f'{og_name}_{descriptor_name}.csv', index=False, header=False)
 
@@ -1146,28 +1154,27 @@ def side_chain_descriptors(amidegroups,peptide):
     descriptors_for_peptide = []
     descriptors_to_calculate = {
         # Your existing descriptors
-        "Radius": Descriptors3D.RadiusOfGyration,
-        "Asphericity": Descriptors3D.Asphericity,
-        "InertialShapeFactor": Descriptors3D.InertialShapeFactor,
-        "Eccentricity": Descriptors3D.Eccentricity,
-        "SpherocityIndex": Descriptors3D.SpherocityIndex,
+        "Radius": Descriptors3D.RadiusOfGyration, #1
+        "Asphericity": Descriptors3D.Asphericity, #2
+        "InertialShapeFactor": Descriptors3D.InertialShapeFactor, #3
+        "Eccentricity": Descriptors3D.Eccentricity, #4
+        "SpherocityIndex": Descriptors3D.SpherocityIndex, #5
 
         # Molecular properties
-        "MolLogP": Descriptors.MolLogP,  # Partition coefficient
-        "MolMR": Descriptors.MolMR,  # Molar refractivity
-        "HeavyAtomCount": Descriptors.HeavyAtomCount,
-        "NumHAcceptors": Descriptors.NumHAcceptors,  # H-bond acceptors
-        "NumHDonors": Descriptors.NumHDonors,  # H-bond donors
-        "NumRotatableBonds": Descriptors.NumRotatableBonds,
-        "RingCount": Descriptors.RingCount,
-        "TPSA": Descriptors.TPSA,
+        "MolLogP": Descriptors.MolLogP,  # Partition coefficient #6
+        "MolMR": Descriptors.MolMR,  # Molar refractivity #7
+        "HeavyAtomCount": Descriptors.HeavyAtomCount, #8
+        "NumHAcceptors": Descriptors.NumHAcceptors,  # H-bond acceptors #9
+        "NumHDonors": Descriptors.NumHDonors,  # H-bond donors #10
+        "NumRotatableBonds": Descriptors.NumRotatableBonds, #11
+        "TPSA": Descriptors.TPSA, #13
 
         # Electronic descriptors
-        "MaxEStateIndex": Descriptors.MaxEStateIndex,
-        "MinEStateIndex": Descriptors.MinEStateIndex,
-        "MaxAbsEStateIndex": Descriptors.MaxAbsEStateIndex,
-        "MinAbsEStateIndex": Descriptors.MinAbsEStateIndex,
-
+        "MaxEStateIndex": Descriptors.MaxEStateIndex, #14
+        "MinEStateIndex": Descriptors.MinEStateIndex, #15
+        "MaxAbsEStateIndex": Descriptors.MaxAbsEStateIndex, # 15
+        "MinAbsEStateIndex": Descriptors.MinAbsEStateIndex, #16
+        #17*6 descriptors
 
     }
     for amide_group in amidegroups:

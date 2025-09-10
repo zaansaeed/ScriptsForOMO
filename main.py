@@ -74,7 +74,6 @@ def main():
             if not os.path.exists(main_dir+f"/Peptide_{name}"):
                 os.mkdir(main_dir+f"/Peptide_{name}")
                 data_logger.info(f"Created {main_dir+f'/Peptide_{name}'}")
-            print(name)
             working_dir = main_dir+f"/Peptide_{name}"
             logging.info(f"Processing {name} in {working_dir}")
             funcs.create_target_file(name,target,working_dir,config["machine_learning"]["target_name"])
@@ -90,7 +89,9 @@ def main():
             ########## feature genereation
             funcs.boltzmann_weight_distances(name,working_dir)
             funcs.boltzmann_weight_dihedrals(name,working_dir)
+
             funcs.create_new_descriptor("side_chain_descriptors",name,working_dir)
+            print(name)
             ##########
         else:
             file_path = f"{main_dir}/skipped_peptides.txt"

@@ -153,24 +153,29 @@ def create_model_data(names,features, main_dir,target_value):
 
     for folder in natsorted(os.listdir(main_dir)):
         if folder.startswith("Peptide_"):
+
             name = folder.split("_")[1]
             if name in names:
                 working_dir = os.path.join(main_dir, folder)
                 os.chdir(working_dir)
                 # Load target
-                target_file = os.path.join(working_dir, f"{name}_{target_value}.txt")
-                with open(target_file) as f:
-                    for line in f:
-                        Y.append(float(line.split()[0]))
+
 
                 X_temp = []
-                print(name)
                 for feature in features:
                     x_feat = peptide_csv_to_array(name, feature, main_dir)
+
                     X_temp.append(x_feat)
 
                 # Stack features into single row for this peptide
-                X_all.append(np.concatenate(X_temp))
+                if X_temp:
+                    target_file = os.path.join(working_dir, f"{name}_{target_value}.txt")
+                    with open(target_file) as f:
+                        for line in f:
+                            Y.append(float(line.split()[0]))
+                    X_all.append(np.concatenate(X_temp))
+                else:
+                    pass
 
 
             else:
@@ -240,10 +245,10 @@ def run_RFR(X, Y):
     loo = LeaveOneOut()
 
     param_grid = {
-        'model__n_estimators': [550],
-        'model__max_depth': [22],
-        'model__min_samples_split': [4],
-        'model__min_samples_leaf': [2],
+        'model__n_estimators': [550,300,500,400],
+        'model__max_depth': [22,20,25,10,30,40],
+        'model__min_samples_split': [4,5,6,7],
+        'model__min_samples_leaf': [2,3,4,5,6,10],
         'model__max_features': [ 0.8],
         'model__bootstrap': [True],
         'model__max_leaf_nodes': [None],
