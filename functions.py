@@ -799,6 +799,35 @@ def load_xyz_coords(mol, xyz_path) -> Chem.Mol:
     mol.AddConformer(conf, assignId=True)
     return mol
 
+
+def get_dihedral_angle(p1s, p2s, p3s, p4s):
+    """Calculate the dihedral angle between four points in 3D space."""
+    # Convert to numpy arrays
+    p1, p2, p3, p4 = map(np.array, (p1s, p2s, p3s, p4s))
+
+    # Bond vectors
+    b1 = p2 - p1
+    b2 = p3 - p2
+    b3 = p4 - p3
+
+    # Normal vectors
+    n1 = np.cross(b1, b2)
+    n2 = np.cross(b2, b3)
+
+    # Normalize normals
+    n1 /= np.linalg.norm(n1)
+    n2 /= np.linalg.norm(n2)
+
+    # Normalize b2
+    b2_unit = b2 / np.linalg.norm(b2)
+
+    # Compute the angle
+    x = np.dot(n1, n2)
+    y = np.dot(np.cross(n1, n2), b2_unit)
+
+    angle = np.arctan2(y, x)
+    return np.degrees(angle)
+
 def calculate_dihedrals(residue,mol) -> list[float]:
     """
     Calculates dihedral angles for a given residue in a mol object. For the given possible residues, this works.
@@ -806,45 +835,24 @@ def calculate_dihedrals(residue,mol) -> list[float]:
     :param mol: Chem.Mol object
     :return:
     """
-    def get_dihedral_angle(p1s, p2s, p3s, p4s):
-        """Calculate the dihedral angle between four points in 3D space."""
-        # Convert to numpy arrays
-        p1, p2, p3, p4 = map(np.array, (p1s, p2s, p3s, p4s))
 
-        # Bond vectors
-        b1 = p2 - p1
-        b2 = p3 - p2
-        b3 = p4 - p3
-
-        # Normal vectors
-        n1 = np.cross(b1, b2)
-        n2 = np.cross(b2, b3)
-
-        # Normalize normals
-        n1 /= np.linalg.norm(n1)
-        n2 /= np.linalg.norm(n2)
-
-        # Normalize b2
-        b2_unit = b2 / np.linalg.norm(b2)
-
-        # Compute the angle
-        x = np.dot(n1, n2)
-        y = np.dot(np.cross(n1, n2), b2_unit)
-
-        angle = np.arctan2(y, x)
-        return np.degrees(angle)
-
-    if len(residue) == 5: #n-terminus case (normal) (5000,5000,psi) [NH2]C[C](=O)[N]
-        temp_dihedrals = [5000, 5000]
+    if len(residue) == 5: #n-terminus case (normal)  _NCC_
+        temp_dihedrals = []
         p1= mol.GetConformer().GetAtomPosition(residue[0])
         p2 = mol.GetConformer().GetAtomPosition(residue[1])
         p3= mol.GetConformer().GetAtomPosition(residue[2])
-        p4 = mol.GetConformer().GetAtomPosition(residue[4])
+        p4 = mol.GetConformer().GetAtomPosition(residue[3])
         temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        temp_dihedrals.append(5000)
+        p1 = mol.GetConformer().GetAtomPosition(residue[1])
+        p2 = mol.GetConformer().GetAtomPosition(residue[2])
+        p3 = mol.GetConformer().GetAtomPosition(residue[3])
+        p4 = mol.GetConformer().GetAtomPosition(residue[4])
+        temp_dihedrals.append(get_dihedral_angle(p1, p2, p3, p4))
         return temp_dihedrals
 
-    if len(residue) == 6: #n-terminus case (abnormal) (5000,theta,psi) [NH2]CC[C](=O)[N]
-        temp_dihedrals = [5000]
+    if len(residue) == 6: #n-terminus case (abnormal)  _NCCC_
+        temp_dihedrals = []
         p1= mol.GetConformer().GetAtomPosition(residue[0])
         p2= mol.GetConformer().GetAtomPosition(residue[1])
         p3=mol.GetConformer().GetAtomPosition(residue[2])
@@ -853,49 +861,22 @@ def calculate_dihedrals(residue,mol) -> list[float]:
         p1= mol.GetConformer().GetAtomPosition(residue[1])
         p2= mol.GetConformer().GetAtomPosition(residue[2])
         p3=mol.GetConformer().GetAtomPosition(residue[3])
-        p4 = mol.GetConformer().GetAtomPosition(residue[5])
-
-        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
-        return temp_dihedrals
-    if len(residue) == 7: #normal   (phi,5000,psi) C(=O)NCC(=O)N
-        temp_dihedrals = []
-        p1= mol.GetConformer().GetAtomPosition(residue[0])
-        p2 = mol.GetConformer().GetAtomPosition(residue[2])
-        p3 = mol.GetConformer().GetAtomPosition(residue[3])
         p4 = mol.GetConformer().GetAtomPosition(residue[4])
         temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
-        temp_dihedrals.append(5000)
-        p1= mol.GetConformer().GetAtomPosition(residue[2])
-        p2 = mol.GetConformer().GetAtomPosition(residue[3])
-        p3 = mol.GetConformer().GetAtomPosition(residue[4])
-        p4 = mol.GetConformer().GetAtomPosition(residue[6])
-        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
-        return temp_dihedrals
-
-    if len(residue)==8: #abnormal case (phi,theta,psi) C(=O)NCCC(=O)N
-        temp_dihedrals = []
-        p1= mol.GetConformer().GetAtomPosition(residue[0])
-        p2 = mol.GetConformer().GetAtomPosition(residue[2])
-        p3 = mol.GetConformer().GetAtomPosition(residue[3])
-        p4 = mol.GetConformer().GetAtomPosition(residue[4])
-        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
-        p1= mol.GetConformer().GetAtomPosition(residue[2])
+        p1 = mol.GetConformer().GetAtomPosition(residue[2])
         p2 = mol.GetConformer().GetAtomPosition(residue[3])
         p3 = mol.GetConformer().GetAtomPosition(residue[4])
         p4 = mol.GetConformer().GetAtomPosition(residue[5])
-        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
-        p1= mol.GetConformer().GetAtomPosition(residue[3])
-        p2 = mol.GetConformer().GetAtomPosition(residue[4])
-        p3 = mol.GetConformer().GetAtomPosition(residue[5])
-        p4 = mol.GetConformer().GetAtomPosition(residue[7])
-        temp_dihedrals.append(get_dihedral_angle(p1,p2,p3,p4))
+        temp_dihedrals.append(get_dihedral_angle(p1, p2, p3, p4))
         return temp_dihedrals
+
     return None
 
 
 def boltzmann_weight_dihedrals(name,working_dir) -> None:
     os.chdir(working_dir)
-    if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or  config["rerun"]["dihedrals"] :
+    ##if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or config["rerun"]["dihedrals"] :
+    if True:
         peptide_normalized_dihedrals = []
         names = get_split_files()
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
@@ -904,19 +885,32 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
         n_terminus = find_n_terminus(mol)
 
         nitrogen_order = bfs_traversal(mol, n_terminus)
-        print(nitrogen_order)
-        possible_amides = mol.GetSubstructMatches(Chem.MolFromSmarts('[N]C[C](=O)'))
-        possible_nitrogens = [possible_amides[i][0] for i in range(len(possible_amides))]
-        print(possible_nitrogens)
+        possible_amides1 = mol.GetSubstructMatches(Chem.MolFromSmarts('[N]C[C](=O)'))
+        possible_amides2 = mol.GetSubstructMatches(Chem.MolFromSmarts('[N]CC[C](=O)'))
+        possible_amides= possible_amides1+possible_amides2
+        possible_nitrogens = [amide[0] for amide in possible_amides]
+        ordered_residues = [
+            amide
+            for n in nitrogen_order
+            for amide in possible_amides
+            if amide[0] == n and n in possible_nitrogens
+        ]
+        # this gets the amides and, the 4 atoms we found. just need to find out which atoms we take hte dihedral of again
 
 
-        n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
+            ##now to check cases. if any neighbor is a hydrogen, use the other neighbor
+
+
+
+
+
+        """n_terminus_residue_normal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]C[C](=O)[N]'))
         n_terminus_residue_abnormal = mol.GetSubstructMatches(Chem.MolFromSmarts('[NH2]CC[C](=O)[N]'))
         normal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCC(=O)N'))
         abnormal_residues = mol.GetSubstructMatches(Chem.MolFromSmiles('C(=O)NCCC(=O)N'))
         all_residues = normal_residues + abnormal_residues + n_terminus_residue_normal + n_terminus_residue_abnormal
         all_residues = list(all_residues)
-
+        print(len(all_residues))
         ##########################
         # get rid of asparagine
         query1 = Chem.MolFromSmarts('C(=O)[N]C[C](=O)[NH2]')
@@ -935,7 +929,7 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
             for residue in all_residues:
                 if id in residue:
                     ordered_residues.append(residue)
-                    all_residues.remove(residue)
+                    all_residues.remove(residue)"""
 
         for conformation_xyz in natsorted(os.listdir(f"{name}_Conformations")):
             model_num = conformation_xyz.split("_")[-3]
@@ -947,7 +941,43 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
             mol = load_xyz_coords(mol, f"{working_dir}/{name}_Conformations/{conformation_xyz}")
             conformation_dihedrals = [] #contains (phi,theta,psi) 6 times, 1 for each residue
             for residue in ordered_residues:
-                conformation_dihedrals.append(calculate_dihedrals(residue,mol))
+                c_residue = [a for a in residue]
+                n_id = c_residue[0]
+                c_id = c_residue[-2]
+                new_atom_to_add_end = None
+                ## we want to get the last carbons neighbor
+                for neighbor in mol.GetAtomWithIdx(c_id).GetNeighbors():
+                    if neighbor.GetIdx() not in c_residue:
+                        new_atom_to_add_end = neighbor.GetIdx()
+                        break
+                # we dont use oxygen anyway, to just make it the carbon neighbor
+                c_residue[-1] = new_atom_to_add_end
+                new_atom_to_add_start = None
+                n_neighbors = []
+                for neighbor in mol.GetAtomWithIdx(n_id).GetNeighbors():
+                    if neighbor.GetIdx() not in c_residue:
+                        n_neighbors.append(mol.GetAtomWithIdx(neighbor.GetIdx()))
+
+                # this will get the atom id that is not a hydrogen, however if there 2 hydrogens, we will use the one with the highest dihedral.
+                if "H" in [atom.GetSymbol() for atom in n_neighbors]:
+                    if n_neighbors[0].GetSymbol() == "H" and n_neighbors[1].GetSymbol() == "H":
+                        hydrogen_dihedral_1 = calculate_dihedrals(n_neighbors[0].GetIdx() + c_residue, mol)
+                        hydrogen_dihedral_2 = calculate_dihedrals(n_neighbors[1].GetIdx() + c_residue, mol)
+                        if hydrogen_dihedral_1[0] < hydrogen_dihedral_2[0]:
+                            new_atom_to_add_start = n_neighbors[0]
+                        else:
+                            new_atom_to_add_start = n_neighbors[1]
+                    else:
+                        new_atom_to_add_start = [atom.GetIdx() for atom in n_neighbors if atom.GetSymbol() != "H"][0]
+                else: #if there is no hydrogen, pick non methyl carbon
+                    for nitrogen_neighbor in n_neighbors:
+                        for carbon_neighbor in nitrogen_neighbor.GetNeighbors():
+                            if mol.GetAtomWithIdx(carbon_neighbor.GetIdx()).GetSymbol() != "H":
+                                new_atom_to_add_start = nitrogen_neighbor.GetIdx()
+                                break
+                c_residue = [new_atom_to_add_start] + c_residue
+                print(c_residue)
+                conformation_dihedrals.append(calculate_dihedrals(c_residue,mol))
             #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
             conformation_normalized_dihedrals = []
             for i in range(len(conformation_dihedrals)): #num of residues
