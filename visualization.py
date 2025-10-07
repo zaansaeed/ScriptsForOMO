@@ -12,8 +12,6 @@ import re
 from joblib import load
 import csv
 
-
-
 def visualize_model(pipeline, X):
     model = pipeline.named_steps['model']
 
@@ -122,7 +120,7 @@ def analyze_feature_ranges(model, X):
         # Reshape feature values for partial_dependence input
         X_temp = X.copy()
         pdp_values = []
-
+        
         # Manual calculation of partial dependence
         for val in feature_values:
             X_temp[:, idx] = val
@@ -199,19 +197,19 @@ def generate_feature_map(atom1,atom2,feature_blocks,feature_ranges,descriptor_fu
             if isinstance(shape,int):
                 for i in range(shape):
                     key = f"{feature_type}_{i+1}"
-                    feature_index_map[f"Feature_{idx+1}_{key}"] = feature_ranges[f"Feature {idx+1}"]
+                    feature_index_map[f"Feature_{idx+1}_{key}"] = 1 #feature_ranges[f"Feature {idx+1}"]
                     idx += 1
             elif isinstance(shape,tuple):
                 for i in range(shape[0]):
                     for j in descriptor_funcs:
                         key = f"{feature_type}_{i+1}_property_{j}"
-                        feature_index_map[f"Feature_{idx + 1}_{key}"] = feature_ranges[f"Feature {idx + 1}"]
+                        feature_index_map[f"Feature_{idx + 1}_{key}"] =  1 #feature_ranges[f"Feature {idx + 1}"]
                         idx += 1
         elif feature_type=='distance':  # 2D matrix
             for i in range(shape[0]):
                 for j in range(shape[1]):
                     key = f"{feature_type}_{atom1}_{i+1}_to_{atom2}_{j+1}"
-                    feature_index_map[f"Feature_{idx + 1}_{key}"] = feature_ranges[f"Feature {idx + 1}"]
+                    feature_index_map[f"Feature_{idx + 1}_{key}"] = 1 #feature_ranges[f"Feature {idx + 1}"]
                     idx += 1
         else:
             raise ValueError(f"Unsupported shape: {shape}")
@@ -356,15 +354,15 @@ def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     X = pd.read_csv(path_to_X).values
     y = pd.read_csv(path_to_y).values.ravel()
     visualize_model(model,X)
-    _, _, feature_ranges = analyze_feature_ranges(model, X)
+   # _, _, feature_ranges = analyze_feature_ranges(model, X)
     feature_blocks = [
         ("side_chain", (6,16)),
     ]
     # r1c1
     pdb_file = "template.pdb"
-    feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, feature_ranges,descriptor_funcs)
+    feature_map = generate_feature_map("hydrogen", "oxygen", feature_blocks, {},descriptor_funcs)
     print(feature_map)
-    visualize_peptide_and_save_features(feature_map, pdb_file, "Feature_1_side_chain_1_property_Radius")
+    visualize_peptide_and_save_features(feature_map, pdb_file, "Feature_86_side_chain_6_property_MolLogP")
 
 if __name__ == "__main__":
     import yaml

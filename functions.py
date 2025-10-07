@@ -1222,7 +1222,7 @@ def side_chain_descriptors(amidegroups,peptide):
             Chem.SanitizeMol(residue)
 
 
-            results = {name: func(peptide) for name, func in descriptors_to_calculate.items()}
+            results = {name: func(peptide) for name, func in descriptors_to_calculate.items()} ### I FOUND THE ISSUE HERE!!!!
 
             descriptors_for_peptide.append(list(results.values()))
     return descriptors_for_peptide
