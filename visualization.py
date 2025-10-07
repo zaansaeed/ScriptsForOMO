@@ -358,7 +358,7 @@ def visualize(path_to_model,path_to_X,path_to_y,descriptor_funcs):
     visualize_model(model,X)
     _, _, feature_ranges = analyze_feature_ranges(model, X)
     feature_blocks = [
-        ("side_chain", (6,18)),
+        ("side_chain", (6,16)),
     ]
     # r1c1
     pdb_file = "template.pdb"
@@ -372,8 +372,22 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     funcs.init_config(config)
-    descriptor_funcs = ['Radius', 'Asphericity', 'InertialShapeFactor', 'Eccentricity', 'SpherocityIndex',
- 'MolLogP', 'MolMR', 'HeavyAtomCount', 'NumHAcceptors', 'NumHDonors',
- 'NumRotatableBonds', 'NumAromaticRings', 'RingCount', 'TPSA',
- 'MaxEStateIndex', 'MinEStateIndex', 'MaxAbsEStateIndex', 'MinAbsEStateIndex']
+    descriptor_funcs = [
+    "Radius",
+    "Asphericity",
+    "InertialShapeFactor",
+    "Eccentricity",
+    "SpherocityIndex",
+    "MolLogP",
+    "MolMR",
+    "HeavyAtomCount",
+    "NumHAcceptors",
+    "NumHDonors",
+    "NumRotatableBonds",
+    "TPSA",
+    "MaxEStateIndex",
+    "MinEStateIndex",
+    "MaxAbsEStateIndex",
+    "MinAbsEStateIndex"
+]
     visualize("RFR_model.joblib","X.csv","y.csv",descriptor_funcs)

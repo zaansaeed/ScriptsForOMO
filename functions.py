@@ -876,7 +876,7 @@ def calculate_dihedrals(residue,mol) -> list[float]:
 def boltzmann_weight_dihedrals(name,working_dir) -> None:
     os.chdir(working_dir)
     ##if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or config["rerun"]["dihedrals"] :
-    if True:
+    if not os.path.exists(f"{name}-BWDihedralNormalized.csv") or config["rerun"]["dihedrals"]:
         peptide_normalized_dihedrals = []
         names = get_split_files()
         peptides = [add_double_bonds_to_pdb(f"{name}-out-template.pdb") for name in names]
@@ -961,12 +961,12 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
                 # this will get the atom id that is not a hydrogen, however if there 2 hydrogens, we will use the one with the highest dihedral.
                 if "H" in [atom.GetSymbol() for atom in n_neighbors]:
                     if n_neighbors[0].GetSymbol() == "H" and n_neighbors[1].GetSymbol() == "H":
-                        hydrogen_dihedral_1 = calculate_dihedrals(n_neighbors[0].GetIdx() + c_residue, mol)
-                        hydrogen_dihedral_2 = calculate_dihedrals(n_neighbors[1].GetIdx() + c_residue, mol)
+                        hydrogen_dihedral_1 = calculate_dihedrals([n_neighbors[0].GetIdx()] + c_residue, mol)
+                        hydrogen_dihedral_2 = calculate_dihedrals([n_neighbors[1].GetIdx()] + c_residue, mol)
                         if hydrogen_dihedral_1[0] < hydrogen_dihedral_2[0]:
-                            new_atom_to_add_start = n_neighbors[0]
+                            new_atom_to_add_start = n_neighbors[0].GetIdx()
                         else:
-                            new_atom_to_add_start = n_neighbors[1]
+                            new_atom_to_add_start = n_neighbors[1].GetIdx()
                     else:
                         new_atom_to_add_start = [atom.GetIdx() for atom in n_neighbors if atom.GetSymbol() != "H"][0]
                 else: #if there is no hydrogen, pick non methyl carbon
@@ -976,7 +976,6 @@ def boltzmann_weight_dihedrals(name,working_dir) -> None:
                                 new_atom_to_add_start = nitrogen_neighbor.GetIdx()
                                 break
                 c_residue = [new_atom_to_add_start] + c_residue
-                print(c_residue)
                 conformation_dihedrals.append(calculate_dihedrals(c_residue,mol))
             #convert each angle to sin/cos components, and add flag = 1 if row contains 5000
             conformation_normalized_dihedrals = []

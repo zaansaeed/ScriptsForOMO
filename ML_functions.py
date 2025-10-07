@@ -150,12 +150,14 @@ def peptide_csv_to_array(name, feature, main_dir) -> np.ndarray:
 def create_model_data(names,features, main_dir,target_value):
     X_all = []
     Y = []
+    with open(main_dir+"/skipped_peptides.txt") as f:
+        skipped_peptides = {line.strip() for line in f if line.strip()}
 
     for folder in natsorted(os.listdir(main_dir)):
         if folder.startswith("Peptide_"):
 
             name = folder.split("_")[1]
-            if name in names:
+            if name in names and name not in skipped_peptides:
                 working_dir = os.path.join(main_dir, folder)
                 os.chdir(working_dir)
                 # Load target
@@ -236,23 +238,23 @@ def plot_Y_distribution(Y):
 
 
 def run_RFR(X, Y):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=42)
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     pipeline = Pipeline([
-        ('scalar', StandardScaler()),
+       #  ('scalar', StandardScaler()),
         ('model', RandomForestRegressor(random_state=42,verbose=1,n_jobs=-1))
     ])
     loo = LeaveOneOut()
 
     param_grid = {
-        'model__n_estimators': [550,300,500,400],
-        'model__max_depth': [22,20,25,10,30,40],
-        'model__min_samples_split': [4,5,6,7],
+        'model__n_estimators': [550,500],
+        'model__max_depth': [22,20,25,10],
+        'model__min_samples_split': [4,5,6],
         'model__min_samples_leaf': [2,3,4,5,6,10],
         'model__max_features': [ 0.8],
         'model__bootstrap': [True],
         'model__max_leaf_nodes': [None],
-        'model__criterion': ['absolute_error'],
+        'model__criterion': ['squared_error','absolute_error']
     }
     search = RandomizedSearchCV(
         estimator=pipeline,  # Your pipeline with 'model' step as SVR
