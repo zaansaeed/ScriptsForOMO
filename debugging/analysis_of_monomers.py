@@ -36,8 +36,8 @@ def save_bar_chart(series: pd.Series, title: str, ylabel: str, outfile: str):
 # 0) Paths & chdir
 # -------------------------
 os.chdir(here())
-MONOMER_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/permeability/monomer_list.csv")
-PEPTIDE_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/permeability/processed_peptides.csv")
+MONOMER_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/permeability/monomer_list.csv")
+PEPTIDE_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/permeability/processed_peptides.csv")
 # If you want to save plots:
 # PLOTS_DIR = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/permeability", "plots")
 # os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -146,35 +146,41 @@ X_train, X_test, y_train, y_test = train_test_split(
 # 6) Hyperparameter tuning (RandomizedSearchCV)
 #    Use neg_mean_squared_error so we can report RMSE directly
 # -------------------------
-rfr = RandomForestRegressor(random_state=42, n_jobs=-1)
+from sklearn.pipeline import Pipeline
+
+# Build a simple pipeline that only contains the RandomForestRegressor
+rfr_pipeline = Pipeline([
+    ("model", RandomForestRegressor(random_state=42, n_jobs=-1))
+])
 
 param_dist = {
-    "n_estimators": np.linspace(200, 1000, num=9, dtype=int),   # 200..1000
-    "max_depth": [None] + list(np.arange(4, 26, 2)),            # None or 4..24
-    "min_samples_split": [2, 4, 6, 8, 10, 20, 40],
-    "min_samples_leaf": [1, 2, 3, 4, 5, 8, 10],
-    "max_features": ["sqrt", "log2", 0.3, 0.5, 0.7],
-    "bootstrap": [True, False],
-    "max_samples": [None, 0.6, 0.8, 1.0],
-    "criterion": ["squared_error", "friedman_mse"]
+    "model__n_estimators": np.linspace(200, 1000, num=9, dtype=int),
+    "model__max_depth": [None] + list(np.arange(4, 26, 2)),
+    "model__min_samples_split": [2, 4, 6, 8, 10, 20, 40],
+    "model__min_samples_leaf": [1, 2, 3, 4, 5, 8, 10],
+    "model__max_features": ["sqrt", "log2", 0.3, 0.5, 0.7],
+    "model__bootstrap": [True, False],
+    "model__max_samples": [None, 0.6, 0.8, 1.0],
+    "model__criterion": ["squared_error", "friedman_mse"]
 }
 
 cv = KFold(n_splits=min(5, len(df)), shuffle=True, random_state=42)
 
 rand_search = RandomizedSearchCV(
-    estimator=rfr,
+    estimator=rfr_pipeline,
     param_distributions=param_dist,
-    n_iter=100,
-    scoring="neg_mean_squared_error",   # so best_score_ is negative MSE
+    n_iter=20,
+    scoring="neg_mean_squared_error",
     cv=cv,
     random_state=42,
     n_jobs=-1,
     verbose=1
 )
 
-rand_search.fit(X_train, y_train)
-best_rfr = rand_search.best_estimator_
 
+rand_search.fit(X_train, y_train)
+best_rfrr = rand_search.best_estimator_
+best_rfr = best_rfrr.named_steps["model"]
 best_cv_rmse = np.sqrt(-rand_search.best_score_)
 print("\n=== Hyperparameter Tuning Results ===")
 print("Best params:", rand_search.best_params_)
@@ -190,7 +196,6 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("\n=== Tuned Random Forest (Test Set) ===")
 print(f"R² (test):  {r2:.3f}")
 print(f"RMSE (test): {rmse:.3f}")
-
 importances = pd.Series(best_rfr.feature_importances_, index=feature_cols).sort_values(ascending=False)
 print("\nFeature importances (descending):")
 print(importances)
@@ -223,7 +228,21 @@ plt.grid(True, linestyle='--', alpha=0.5)
 plt.tight_layout()
 plt.show()
 
-# If you want to save instead of show:
-# out_png = os.path.join(PLOTS_DIR, "pred_vs_true.png")
-# plt.savefig(out_png, dpi=200); plt.close()
-# print(f"[Info] Saved: {out_png}")
+import joblib
+
+# Create output folder if it doesn’t exist
+output_dir = "saved_model"
+os.makedirs(output_dir, exist_ok=True)
+
+# Ensure data is in DataFrame form before saving
+pd.DataFrame(X).to_csv(os.path.join(output_dir, "X_copy.csv"), index=False)
+pd.DataFrame(y).to_csv(os.path.join(output_dir, "Y_copy.csv"), index=False, header=["Target"])
+
+# Save trained Random Forest model
+model_path = os.path.join(output_dir, "random_forest_model.joblib")
+joblib.dump(best_rfrr, model_path)
+
+print(f"\n=== Saved Outputs ===")
+print(f"X_copy.csv  → {os.path.join(output_dir, 'X_copy.csv')}")
+print(f"Y_copy.csv  → {os.path.join(output_dir, 'Y_copy.csv')}")
+print(f"Model saved → {model_path}")

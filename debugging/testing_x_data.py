@@ -10,8 +10,8 @@ import os
 # 1. Load data
 # -------------------------------------------------
 os.chdir("/Users/zaan/PycharmProjects/ScriptsForOMO/debugging")
-X = pd.read_csv("X.csv", header=None)
-y = pd.read_csv("y.csv", header=None).squeeze()  # convert to 1D array
+X = pd.read_csv("../X.csv", header=None)
+y = pd.read_csv("../y.csv", header=None).squeeze()  # convert to 1D array
 
 # -------------------------------------------------
 # 2. Extract every 6th column of each 16-column block
