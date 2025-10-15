@@ -146,11 +146,11 @@ def target_region(
 
 # === 7) Example usage ===
 if __name__ == "__main__":
-    TARGET = -4
-    CONSTRAINTS =  None
+    TARGET = -5
+    CONSTRAINTS =  { 2:(0,1)}  # e.g., {"2": (0, 1), "5": 1.5}
     y = pd.read_csv(Y_PATH).squeeze()
 
-    res, meta = target_region(TARGET, constraints=CONSTRAINTS, eps=0.5, n_samples=30000, include_shap=True)
+    res, meta = target_region(TARGET, constraints=CONSTRAINTS, eps=0.06, n_samples=30000, include_shap=True)
     if res is None:
         print(meta["msg"])
     else:
@@ -159,3 +159,6 @@ if __name__ == "__main__":
         print("\n=== Example designs (first 10 sampled hits) ===")
         print(res["examples"].head(10).to_string(index=False))
         print("\nMETA:", meta)
+
+    
+    
