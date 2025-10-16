@@ -13,6 +13,7 @@ folder = os.path.join(os.getcwd())
 MODEL_PATH = folder + "/saved_model/random_forest_model.joblib"
 X_PATH     = folder + "/saved_model/X_copy.csv"
 Y_PATH     = folder + "/saved_model/Y_copy.csv"  # not strictly required, but available
+MONOMER_LIST_CSV = folder + "/monomer_logP.csv"
 
 # === 1) Load model and data ===
 pipe = joblib.load(MODEL_PATH)
@@ -79,14 +80,30 @@ def target_region(
     if hit.empty:
         return None, {"msg": f"No candidates within ±{eps} of target. Try increasing eps, n_samples, or jitter_frac."}
 
+    monomers = pd.read_csv(MONOMER_LIST_CSV)
     # summarize feasible ranges
+    def preview_list(lst, k=8):
+        lst = list(lst)
+        return lst if len(lst) <= k else lst[:k] + [f"...(+{len(lst)-k} more)"]
+
     summary = pd.DataFrame({
         "min": hit[FEATURES].min(),
         "q25": hit[FEATURES].quantile(0.25),
         "median": hit[FEATURES].median(),
         "q75": hit[FEATURES].quantile(0.75),
         "max": hit[FEATURES].max(),
-    }).T
+        "possible_monomers" : [
+        preview_list(
+            monomers.loc[
+                (monomers["logP"] >= hit[c].min()) &
+                (monomers["logP"] <= hit[c].max()),
+                "Symbol"
+            ].dropna().drop_duplicates().tolist(),
+            k=3
+        )
+        for c in FEATURES
+    ]
+    })
 
     out = {
         "n_candidates": int(len(cand)),
@@ -113,6 +130,10 @@ def target_region(
 
     examples = hit.sample(min(10, len(hit)), random_state=1)
     examples = examples[FEATURES + ["y_pred"]]
+
+
+
+
     return {"feasible_ranges": summary, "examples": examples}, {**out, "shap": shap_summary}
 
 
@@ -120,7 +141,7 @@ def target_region(
 # === 7) Example usage ===
 if __name__ == "__main__":
     TARGET = -5
-    CONSTRAINTS =  {"2": 1.25} #e.g., {"2": (0, 1), "5": 1.5}
+    CONSTRAINTS =  None #e.g., {"2": (0, 1), "5": 1.5}
     y = pd.read_csv(Y_PATH).squeeze()
 
     res, meta = target_region(TARGET, constraints=CONSTRAINTS, eps=0.06, n_samples=30000, include_shap=True)
