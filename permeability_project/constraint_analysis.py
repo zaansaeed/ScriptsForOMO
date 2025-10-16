@@ -26,35 +26,6 @@ FEATURES = list(X.columns)  # e.g., 6 columns for your 6 side chains
 
 
 
-# === Helper: resolve constraint keys to column names/indices in FEATURES ===
-def _resolve_constraint_key(raw_key):
-    """Map a user-provided constraint key to an existing column in FEATURES.
-    Supports exact match, int-like keys (e.g., 2 or '2'), and avoids creating new columns.
-    Returns the resolved key if found, else None.
-    """
-    # Exact match first
-    if raw_key in FEATURES:
-        return raw_key
-    # Try to coerce numeric-like strings/ints
-    try:
-        k_int = int(raw_key)
-        if k_int in FEATURES:
-            return k_int
-        if str(k_int) in FEATURES:
-            return str(k_int)
-    except Exception:
-        pass
-    # As a last resort, try a loose match like 'Feature_2' -> 2 or '2'
-    if isinstance(raw_key, str):
-        import re
-        m = re.search(r"(\d+)$", raw_key)
-        if m:
-            k_int2 = int(m.group(1))
-            if k_int2 in FEATURES:
-                return k_int2
-            if str(k_int2) in FEATURES:
-                return str(k_int2)
-    return None
 
 
 def target_region(
@@ -65,32 +36,34 @@ def target_region(
     jitter_frac=0.5,           # add small noise to broaden coverage
     include_shap=False          # set True if you want SHAP overlay (needs TreeExplainer)
 ):
+    #create random nmber generator
     rng = np.random.default_rng(0)
+    #create base dataset, using sampling with replacement if n_samples > len(X)
     base = X.sample(n=min(len(X), n_samples), replace=len(X) < n_samples, random_state=0).copy()
 
     # small Gaussian jitter (per-feature) to explore nearby space
-    std = X.std().replace(0, 1e-9).values
-    jitter = rng.normal(0, 1, size=(len(base), X.shape[1])) * (jitter_frac * std)
-    cand = base.values + jitter
+    std = X.std().replace(0, 1e-9).values #std of each feature, avoid zero std
+    jitter = rng.normal(0, 1, size=(len(base), X.shape[1])) * (jitter_frac * std) # jitter taken from gaussian distruvtion and scaled by std and jitter_frac for realistic
+    cand = base.values + jitter #add this jitter to base values, creating candidate set
     cand = pd.DataFrame(cand, columns=FEATURES)
 
     # enforce constraints
     if constraints:
         for raw_key, v in constraints.items():
-            col = _resolve_constraint_key(raw_key)
+            col = raw_key
             if col is None or col not in cand.columns:
                 print(f"[target_region] Skipping constraint for '{raw_key}' — no matching feature in FEATURES={FEATURES}.")
                 continue
             if isinstance(v, (tuple, list)):
                 lo, hi = float(v[0]), float(v[1])
-                cand[col] = cand[col].clip(lo, hi)
+                cand[col] = cand[col].clip(lo, hi) #replace all candidates col values outside of (lo, hi) with lo or hi
             else:
-                cand[col] = float(v)
+                cand[col] = float(v) #replace all candidates col values with this value
 
     # keep candidates within robust bounds (1st–99th pct) to avoid crazy outliers
     ql, qh = X.quantile(0.01), X.quantile(0.99)
     for c in FEATURES:
-        cand[c] = cand[c].clip(float(ql[c]), float(qh[c]))
+        cand[c] = cand[c].clip(float(ql[c]), float(qh[c])) #clip each feature to be within 1st and 99th percentile of original feature values
 
     # predict and filter to those near the target
     try:
@@ -99,8 +72,8 @@ def target_region(
         yhat = model.predict(cand[FEATURES])
     yhat = np.asarray(yhat).ravel()
 
-    mask = np.abs(yhat - target) <= eps
-    hit = cand.loc[mask].copy()
+    mask = np.abs(yhat - target) <= eps # only keep candidates within eps of target (boolean mask)
+    hit = cand.loc[mask].copy() #only keep candidates within eps of target, selects only rows where mask is True
     hit["y_pred"] = yhat[mask]
 
     if hit.empty:
@@ -147,7 +120,7 @@ def target_region(
 # === 7) Example usage ===
 if __name__ == "__main__":
     TARGET = -5
-    CONSTRAINTS =  { 2:(0,1)}  # e.g., {"2": (0, 1), "5": 1.5}
+    CONSTRAINTS =  {"2": 1.25} #e.g., {"2": (0, 1), "5": 1.5}
     y = pd.read_csv(Y_PATH).squeeze()
 
     res, meta = target_region(TARGET, constraints=CONSTRAINTS, eps=0.06, n_samples=30000, include_shap=True)
