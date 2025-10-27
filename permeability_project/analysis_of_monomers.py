@@ -36,8 +36,8 @@ def save_bar_chart(series: pd.Series, title: str, ylabel: str, outfile: str):
 # 0) Paths & chdir
 # -------------------------
 os.chdir(here())
-MONOMER_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/data/monomer_list.csv")
-PEPTIDE_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/data/processed_peptides.csv")
+MONOMER_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/data/monomer_list.csv")
+PEPTIDE_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/data/processed_peptides.csv")
 # If you want to save plots:
 # PLOTS_DIR = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/permeability", "plots")
 # os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -108,6 +108,7 @@ df = df.dropna(subset=num_cols).reset_index(drop=True)
 
 # ✅ Exclude invalid permeability rows (e.g., sentinel -10)
 df = df[df["Permeability"] != -10].reset_index(drop=True)
+feature_cols = [c for c in num_cols if c != "Permeability"]
 
 # Drop constant columns (rare but safe)
 const_cols = [c for c in num_cols if df[c].nunique(dropna=True) <= 1]
@@ -119,17 +120,6 @@ if const_cols:
 print(f"[Info] Final dataset shape: {df.shape}")
 print(df.head())
 
-# -------------------------
-# 4) Correlations (optional print)
-# -------------------------
-feature_cols = [c for c in num_cols if c != "Permeability"]
-pearson = df[["Permeability"] + feature_cols].corr(method="pearson")["Permeability"].drop("Permeability", errors="ignore")
-spearman = df[["Permeability"] + feature_cols].corr(method="spearman")["Permeability"].drop("Permeability", errors="ignore")
-
-print("\n=== Pearson r with Permeability ===")
-print(pearson)
-print("\n=== Spearman ρ with Permeability ===")
-print(spearman)
 
 # -------------------------
 # 5) Split data
