@@ -9,6 +9,8 @@ from rdkit.Chem import Descriptors
 from sklearn.model_selection import train_test_split, KFold, cross_val_score, RandomizedSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.pipeline import Pipeline
+import joblib
 
 import matplotlib.pyplot as plt
 
@@ -36,11 +38,8 @@ def save_bar_chart(series: pd.Series, title: str, ylabel: str, outfile: str):
 # 0) Paths & chdir
 # -------------------------
 os.chdir(here())
-MONOMER_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/data/monomer_list.csv")
-PEPTIDE_CSV = os.path.join("/Users/zaansaeed/PycharmProjects/pythonProject/ScriptsForOMO/data/processed_peptides.csv")
-# If you want to save plots:
-# PLOTS_DIR = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/permeability", "plots")
-# os.makedirs(PLOTS_DIR, exist_ok=True)
+MONOMER_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/data/monomer_list.csv")
+PEPTIDE_CSV = os.path.join("/Users/zaan/PycharmProjects/ScriptsForOMO/data/processed_peptides.csv")
 
 # -------------------------
 # 1) Load monomer list and build {symbol: (smiles, logP)}
@@ -59,7 +58,7 @@ if not monomers_list:
     raise ValueError("monomers_list is empty. Check monomer_list.csv content.")
 
 # -------------------------
-# 2) Load peptides & compute per-position logP
+# 2) Load peptides & compute per-position logP + stereochemistry
 # -------------------------
 peptides = load_data(PEPTIDE_CSV)
 if peptides["Sequence"].dtype == object:
@@ -71,6 +70,7 @@ for seq, permeability, pid in zip(peptides["Sequence"], peptides["Permeability"]
         continue
 
     logP_values = []
+    chiral_tags = []  # NEW: store D/L for each position
     bad = False
     for monomer in seq:
         if monomer not in monomers_list:
@@ -82,47 +82,61 @@ for seq, permeability, pid in zip(peptides["Sequence"], peptides["Permeability"]
             bad = True
             break
         logP_values.append(float(Descriptors.MolLogP(mol)))
+        
+        # NEW: Extract stereochemistry (1 if D-amino acid, 0 if L)
+        # Assuming 'd' prefix indicates D-amino acid in your monomer symbols
+        is_D = 1 if monomer.startswith('d') else 0
+        chiral_tags.append(is_D)
+    
     if bad:
         continue
 
-    LOGP_DICTIONARY[tuple(seq)] = [logP_values, float(permeability), pid]
+    LOGP_DICTIONARY[tuple(seq)] = [logP_values, chiral_tags, float(permeability), pid]
 
 if not LOGP_DICTIONARY:
     raise ValueError("LOGP_DICTIONARY is empty. Check sequences/monomer symbols match your monomer list.")
 
 # -------------------------
-# 3) Build tidy feature table
+# 3) Build tidy feature table with stereochemistry
 # -------------------------
 rows = []
-for seq, (logP_values, permeability, pid) in LOGP_DICTIONARY.items():
+for seq, (logP_values, chiral_tags, permeability, pid) in LOGP_DICTIONARY.items():
     row = {"Permeability": permeability, "Sequence": "-".join(seq), "ID": pid}
+    
+    # Add LogP features
     for i, v in enumerate(logP_values, start=1):
         row[f"Pos_{i}_logP"] = v
+    
+    # NEW: Add stereochemistry features
+    for i, is_D in enumerate(chiral_tags, start=1):
+        row[f"Pos_{i}_is_D"] = is_D
+    
     rows.append(row)
 
 df = pd.DataFrame(rows)
 
-num_cols = ["Permeability"] + [f"Pos_{i}_logP" for i in range(1, 7)]
+# Update numeric columns to include both LogP and stereochemistry
+num_cols = ["Permeability"] + \
+           [f"Pos_{i}_logP" for i in range(1, 7)] + \
+           [f"Pos_{i}_is_D" for i in range(1, 7)]
+
 df[num_cols] = df[num_cols].apply(pd.to_numeric, errors="coerce")
 df = df.dropna(subset=num_cols).reset_index(drop=True)
 
 # ✅ Exclude invalid permeability rows (e.g., sentinel -10)
-df = df[df["Permeability"] != -10].reset_index(drop=True)
+df = df[df["Permeability"] != -10.0].reset_index(drop=True)
 feature_cols = [c for c in num_cols if c != "Permeability"]
 
-# Drop constant columns (rare but safe)
-const_cols = [c for c in num_cols if df[c].nunique(dropna=True) <= 1]
-if const_cols:
-    print("[Info] Dropping constant columns (no variance):", const_cols)
-    df = df.drop(columns=const_cols)
-    num_cols = [c for c in num_cols if c not in const_cols]
+
 
 print(f"[Info] Final dataset shape: {df.shape}")
+print(f"[Info] Number of features: {len(feature_cols)}")
+print(f"[Info] Features: {feature_cols}")
+print("\nFirst few rows:")
 print(df.head())
 
-
 # -------------------------
-# 5) Split data
+# 4) Split data
 # -------------------------
 X = df[feature_cols].values
 y = df["Permeability"].values
@@ -132,13 +146,12 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=max(0.2, min(0.3, 1.0 / max(2, len(df)))), random_state=42
 )
 
-# -------------------------
-# 6) Hyperparameter tuning (RandomizedSearchCV)
-#    Use neg_mean_squared_error so we can report RMSE directly
-# -------------------------
-from sklearn.pipeline import Pipeline
+print(f"\n[Info] Training set size: {len(X_train)}")
+print(f"[Info] Test set size: {len(X_test)}")
 
-# Build a simple pipeline that only contains the RandomForestRegressor
+# -------------------------
+# 5) Hyperparameter tuning (RandomizedSearchCV)
+# -------------------------
 rfr_pipeline = Pipeline([
     ("model", RandomForestRegressor(random_state=42, n_jobs=-1))
 ])
@@ -167,17 +180,18 @@ rand_search = RandomizedSearchCV(
     verbose=1
 )
 
-
+print("\n[Info] Starting hyperparameter tuning...")
 rand_search.fit(X_train, y_train)
 best_rfrr = rand_search.best_estimator_
 best_rfr = best_rfrr.named_steps["model"]
 best_cv_rmse = np.sqrt(-rand_search.best_score_)
+
 print("\n=== Hyperparameter Tuning Results ===")
 print("Best params:", rand_search.best_params_)
 print(f"Best CV RMSE (neg MSE scoring): {best_cv_rmse:.3f}")
 
 # -------------------------
-# 7) Evaluate tuned model + feature importances + chart
+# 6) Evaluate tuned model on test set
 # -------------------------
 y_pred = best_rfr.predict(X_test)
 r2 = r2_score(y_test, y_pred)
@@ -186,12 +200,26 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print("\n=== Tuned Random Forest (Test Set) ===")
 print(f"R² (test):  {r2:.3f}")
 print(f"RMSE (test): {rmse:.3f}")
+
+# -------------------------
+# 7) Feature importances
+# -------------------------
 importances = pd.Series(best_rfr.feature_importances_, index=feature_cols).sort_values(ascending=False)
 print("\nFeature importances (descending):")
 print(importances)
 
+# Save feature importance plot
+plt.figure(figsize=(10, 6))
+importances.plot(kind='barh')
+plt.xlabel('Feature Importance')
+plt.title('Random Forest Feature Importances')
+plt.tight_layout()
+plt.savefig('feature_importances.png', dpi=200)
+plt.close()
+print("\n[Info] Feature importance plot saved as 'feature_importances.png'")
+
 # -------------------------
-# 8) Cross-Validation summary on full data (optional)
+# 8) Cross-Validation summary on full data
 # -------------------------
 cv_r2 = cross_val_score(best_rfr, X, y, cv=cv, scoring="r2", n_jobs=-1)
 cv_rmse = np.sqrt(-cross_val_score(best_rfr, X, y, cv=cv, scoring="neg_mean_squared_error", n_jobs=-1))
@@ -216,23 +244,36 @@ plt.title(f"Predicted vs. True Permeability\nR² = {r2:.3f}, RMSE = {rmse:.3f}",
 plt.legend()
 plt.grid(True, linestyle='--', alpha=0.5)
 plt.tight_layout()
-plt.show()
+plt.savefig('predicted_vs_true.png', dpi=200)
+plt.close()
+print("[Info] Prediction plot saved as 'predicted_vs_true.png'")
 
-import joblib
-
-# Create output folder if it doesn’t exist
+# -------------------------
+# 10) Save model and data
+# -------------------------
 output_dir = "saved_model"
 os.makedirs(output_dir, exist_ok=True)
 
-# Ensure data is in DataFrame form before saving
-pd.DataFrame(X).to_csv(os.path.join(output_dir, "X_copy.csv"), index=False)
-pd.DataFrame(y).to_csv(os.path.join(output_dir, "Y_copy.csv"), index=False, header=["Target"])
+# Save feature names
+feature_names_df = pd.DataFrame({'feature': feature_cols})
+feature_names_df.to_csv(os.path.join(output_dir, "feature_names.csv"), index=False)
+
+# Save full dataset with features
+df.to_csv(os.path.join(output_dir, "full_dataset_with_features.csv"), index=False)
+
+# Save train/test splits
+pd.DataFrame(X, columns=feature_cols).to_csv(os.path.join(output_dir, "X.csv"), index=False)
+pd.DataFrame(y, columns=["Permeability"]).to_csv(os.path.join(output_dir, "y.csv"), index=False)
 
 # Save trained Random Forest model
 model_path = os.path.join(output_dir, "random_forest_model.joblib")
 joblib.dump(best_rfrr, model_path)
 
 print(f"\n=== Saved Outputs ===")
-print(f"X_copy.csv  → {os.path.join(output_dir, 'X_copy.csv')}")
-print(f"Y_copy.csv  → {os.path.join(output_dir, 'Y_copy.csv')}")
-print(f"Model saved → {model_path}")
+print(f"X saved to: {os.path.join(output_dir, 'X.csv')}")
+print(f"y saved to: {os.path.join(output_dir, 'y.csv')}")
+print(f"Feature names saved to: {os.path.join(output_dir, 'feature_names.csv')}")
+print(f"Full dataset saved to: {os.path.join(output_dir, 'full_dataset_with_features.csv')}")
+print(f"Model saved to: {model_path}")
+
+print("\n[Info] Done!")
